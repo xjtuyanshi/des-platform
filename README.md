@@ -64,6 +64,7 @@ pnpm generate:schema
 pnpm typecheck
 pnpm test
 pnpm run:model
+pnpm validate:model
 pnpm dev:api
 pnpm dev:viewer
 pnpm report:baseline
@@ -86,9 +87,13 @@ It is intentionally code/data based instead of drag-and-drop based:
 Generic models can be run without the viewer:
 
 ```bash
+pnpm validate:model
+pnpm validate:model config/models/warehouse-material-flow.json
 pnpm run:model
 pnpm run:model config/models/warehouse-material-flow.json baseline
 ```
+
+Validation writes `output/<model-file>-diagnostics.json` with schema, process graph, material route, and experiment diagnostics. This is the first guardrail for AI-authored models: an agent can generate a model, validate it, repair specific diagnostic codes, and only then run the simulation.
 
 The runner writes serializable results to `output/<model-id>-<experiment-id>-run.json` with event logs, process snapshots, material-handling state, and summary KPIs.
 

@@ -31,6 +31,11 @@ function parseByExtension(filePath: string, raw: string): unknown {
   return JSON.parse(raw);
 }
 
+export async function loadUnknownDefinition(filePath: string): Promise<unknown> {
+  const raw = await readFile(filePath, 'utf8');
+  return parseByExtension(filePath, raw);
+}
+
 export async function loadLayoutDefinition(layoutPath: string): Promise<LayoutDefinition> {
   const raw = await readFile(layoutPath, 'utf8');
   return LayoutDefinitionSchema.parse(parseByExtension(layoutPath, raw));

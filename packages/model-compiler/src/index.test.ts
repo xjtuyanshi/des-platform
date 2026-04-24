@@ -1,4 +1,4 @@
-import { compileDesModel, runDesModel, runDesModelToResult } from './index.js';
+import { analyzeDesModel, compileDesModel, runDesModel, runDesModelToResult } from './index.js';
 
 describe('model compiler', () => {
   it('validates and runs an AI-native process model DSL', () => {
@@ -157,5 +157,95 @@ describe('model compiler', () => {
         experiments: [{ id: 'baseline', stopTimeSec: 1 }]
       })
     ).toThrow(/unknown to block missing/);
+  });
+
+  it('reports no diagnostics for a valid minimal model', () => {
+    const report = analyzeDesModel({
+      schemaVersion: 'des-platform.v1',
+      id: 'valid-minimal',
+      name: 'Valid Minimal',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [{ from: 'source', to: 'sink' }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+    });
+
+    expect(report.valid).toBe(true);
+    expect(report.errors).toHaveLength(0);
+    expect(report.warnings).toHaveLength(0);
+  });
+
+  it('reports static process graph diagnostics without throwing', () => {
+    const report = analyzeDesModel({
+      schemaVersion: 'des-platform.v1',
+      id: 'dead-end',
+      name: 'Dead End',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'queue', kind: 'queue' },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [{ from: 'source', to: 'queue' }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+    });
+
+    expect(report.valid).toBe(false);
+    expect(report.errors.map((diagnostic) => diagnostic.code)).toEqual(
+      expect.arrayContaining(['process.dead-end', 'process.source-cannot-reach-sink'])
+    );
+    expect(report.warnings.map((diagnostic) => diagnostic.code)).toEqual(
+      expect.arrayContaining(['process.unreachable-block', 'process.unused-sink'])
+    );
+  });
+
+  it('reports material handling route diagnostics before runtime', () => {
+    const report = analyzeDesModel({
+      schemaVersion: 'des-platform.v1',
+      id: 'unreachable-route',
+      name: 'Unreachable Route',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'move', kind: 'moveByTransporter', fleetId: 'amr', fromNodeId: 'dock', toNodeId: 'storage' },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [
+          { from: 'source', to: 'move' },
+          { from: 'move', to: 'sink' }
+        ]
+      },
+      materialHandling: {
+        id: 'layout',
+        nodes: [
+          { id: 'dock', type: 'dock', x: 0, z: 0 },
+          { id: 'storage', type: 'storage', x: 10, z: 0 }
+        ],
+        paths: [],
+        transporterFleets: [{ id: 'amr', count: 1, homeNodeId: 'dock', speedMps: 1.5 }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+    });
+
+    expect(report.valid).toBe(false);
+    expect(report.errors.map((diagnostic) => diagnostic.code)).toContain('material.route-unreachable');
+  });
+
+  it('reports schema diagnostics for invalid model input', () => {
+    const report = analyzeDesModel({
+      schemaVersion: 'wrong-version',
+      id: 'bad-schema'
+    });
+
+    expect(report.valid).toBe(false);
+    expect(report.errors.map((diagnostic) => diagnostic.code)).toContain('schema.invalid');
   });
 });
