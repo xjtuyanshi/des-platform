@@ -3,6 +3,30 @@
   "id": "stochastic-single-machine",
   "name": "Stochastic Single Machine",
   "description": "Generic DES model using seeded stochastic arrivals and triangular service times.",
+  "parameters": [
+    {
+      "id": "arrival-mean-sec",
+      "name": "Mean interarrival time",
+      "path": "/process/blocks/source/intervalSec/mean",
+      "valueType": "number",
+      "defaultValue": 90,
+      "min": 30,
+      "max": 180,
+      "step": 10,
+      "unit": "s"
+    },
+    {
+      "id": "service-mode-sec",
+      "name": "Most likely service time",
+      "path": "/process/blocks/service/durationSec/mode",
+      "valueType": "number",
+      "defaultValue": 100,
+      "min": 60,
+      "max": 160,
+      "step": 5,
+      "unit": "s"
+    }
+  ],
   "process": {
     "id": "stochastic-single-machine-flow",
     "resourcePools": [
@@ -56,6 +80,10 @@
       "seed": 20260424,
       "replications": 8,
       "seedStride": 1,
+      "parameterOverrides": {
+        "arrival-mean-sec": 90,
+        "service-mode-sec": 100
+      },
       "stopTimeSec": 3600
     },
     {
@@ -63,6 +91,10 @@
       "seed": 20260425,
       "replications": 8,
       "seedStride": 1,
+      "parameterOverrides": {
+        "arrival-mean-sec": 75,
+        "service-mode-sec": 120
+      },
       "stopTimeSec": 3600
     }
   ]

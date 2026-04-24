@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const DslLiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+export const ParameterValueTypeSchema = z.enum(['number', 'integer', 'string', 'boolean']);
 
 const RawTimeDistributionDefinitionSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -85,6 +86,89 @@ export const EntityConditionSchema = z.object({
   operator: z.enum(['equals', 'not-equals']).default('equals'),
   value: DslLiteralSchema
 });
+
+export const ModelParameterDefinitionSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  description: z.string().default(''),
+  path: z.string().regex(/^\//, 'Parameter path must start with /'),
+  valueType: ParameterValueTypeSchema.default('number'),
+  defaultValue: DslLiteralSchema,
+  min: z.number().optional(),
+  max: z.number().optional(),
+  step: z.number().positive().optional(),
+  unit: z.string().optional()
+}).superRefine((parameter, context) => {
+  addParameterValueIssues(parameter, parameter.defaultValue, ['defaultValue'], context);
+
+  if ((parameter.valueType === 'string' || parameter.valueType === 'boolean') && (parameter.min !== undefined || parameter.max !== undefined || parameter.step !== undefined)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['valueType'],
+      message: `Parameter ${parameter.id} uses ${parameter.valueType} values and cannot define min, max, or step`
+    });
+  }
+
+  if (parameter.min !== undefined && parameter.max !== undefined && parameter.max < parameter.min) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['max'],
+      message: `Parameter ${parameter.id} max must be greater than or equal to min`
+    });
+  }
+});
+
+function addParameterValueIssues(
+  parameter: z.infer<typeof ModelParameterDefinitionSchema>,
+  value: z.infer<typeof DslLiteralSchema>,
+  path: Array<string | number>,
+  context: z.RefinementCtx
+): void {
+  if (!parameterValueMatchesType(parameter.valueType, value)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path,
+      message: `Parameter ${parameter.id} value must be ${parameter.valueType}`
+    });
+    return;
+  }
+
+  if (typeof value !== 'number') {
+    return;
+  }
+
+  if (parameter.min !== undefined && value < parameter.min) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path,
+      message: `Parameter ${parameter.id} value must be greater than or equal to ${parameter.min}`
+    });
+  }
+
+  if (parameter.max !== undefined && value > parameter.max) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path,
+      message: `Parameter ${parameter.id} value must be less than or equal to ${parameter.max}`
+    });
+  }
+}
+
+function parameterValueMatchesType(valueType: z.infer<typeof ParameterValueTypeSchema>, value: z.infer<typeof DslLiteralSchema>): boolean {
+  switch (valueType) {
+    case 'number':
+      return typeof value === 'number';
+    case 'integer':
+      return typeof value === 'number' && Number.isInteger(value);
+    case 'string':
+      return typeof value === 'string';
+    case 'boolean':
+      return typeof value === 'boolean';
+    default:
+      valueType satisfies never;
+      return false;
+  }
+}
 
 export const ResourcePoolDefinitionSchema = z.object({
   id: z.string(),
@@ -441,6 +525,7 @@ export const ExperimentDefinitionSchema = z.object({
   seed: z.number().int().nonnegative().default(1),
   replications: z.number().int().positive().default(1),
   seedStride: z.number().int().positive().default(1),
+  parameterOverrides: z.record(DslLiteralSchema).default({}),
   stopTimeSec: z.number().positive(),
   warmupSec: z.number().nonnegative().default(0),
   maxEvents: z.number().int().positive().default(100_000)
@@ -451,11 +536,39 @@ export const AiNativeDesModelDefinitionSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().default(''),
+  parameters: z.array(ModelParameterDefinitionSchema).default([]),
   process: ProcessFlowDefinitionSchema,
   materialHandling: MaterialHandlingDefinitionSchema.optional(),
   experiments: z.array(ExperimentDefinitionSchema).default([]),
   metadata: z.record(DslLiteralSchema).default({})
 }).superRefine((model, context) => {
+  const parameterIds = new Set<string>();
+  for (const parameter of model.parameters) {
+    if (parameterIds.has(parameter.id)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['parameters'],
+        message: `Duplicate model parameter id ${parameter.id}`
+      });
+    }
+    parameterIds.add(parameter.id);
+  }
+
+  for (const experiment of model.experiments) {
+    for (const [parameterId, value] of Object.entries(experiment.parameterOverrides)) {
+      const parameter = model.parameters.find((candidate) => candidate.id === parameterId);
+      if (!parameter) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['experiments', experiment.id, 'parameterOverrides', parameterId],
+          message: `Experiment ${experiment.id} overrides unknown parameter ${parameterId}`
+        });
+        continue;
+      }
+      addParameterValueIssues(parameter, value, ['experiments', experiment.id, 'parameterOverrides', parameterId], context);
+    }
+  }
+
   const materialBlocks = model.process.blocks.filter((block) =>
     block.kind === 'moveByTransporter' || block.kind === 'store' || block.kind === 'retrieve' || block.kind === 'convey'
   );
@@ -522,9 +635,11 @@ export const AiNativeDesModelDefinitionSchema = z.object({
 });
 
 export type DslLiteral = z.infer<typeof DslLiteralSchema>;
+export type ParameterValueType = z.infer<typeof ParameterValueTypeSchema>;
 export type TimeDistributionDefinition = z.infer<typeof TimeDistributionDefinitionSchema>;
 export type TimeValueDefinition = z.infer<typeof TimeValueDefinitionSchema>;
 export type EntityConditionDefinition = z.infer<typeof EntityConditionSchema>;
+export type ModelParameterDefinition = z.infer<typeof ModelParameterDefinitionSchema>;
 export type ResourcePoolDefinition = z.infer<typeof ResourcePoolDefinitionSchema>;
 export type MaterialNodeDefinition = z.infer<typeof MaterialNodeDefinitionSchema>;
 export type MaterialPathDefinition = z.infer<typeof MaterialPathDefinitionSchema>;

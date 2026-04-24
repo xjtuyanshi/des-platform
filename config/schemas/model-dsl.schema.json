@@ -18,6 +18,66 @@
           "type": "string",
           "default": ""
         },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string",
+                "default": ""
+              },
+              "path": {
+                "type": "string",
+                "pattern": "^\\/"
+              },
+              "valueType": {
+                "type": "string",
+                "enum": [
+                  "number",
+                  "integer",
+                  "string",
+                  "boolean"
+                ],
+                "default": "number"
+              },
+              "defaultValue": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              },
+              "step": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "unit": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "path",
+              "defaultValue"
+            ],
+            "additionalProperties": false
+          },
+          "default": []
+        },
         "process": {
           "type": "object",
           "properties": {
@@ -229,12 +289,7 @@
                       "attributes": {
                         "type": "object",
                         "additionalProperties": {
-                          "type": [
-                            "string",
-                            "number",
-                            "boolean",
-                            "null"
-                          ]
+                          "$ref": "#/definitions/AiNativeDesModelDefinition/properties/parameters/items/properties/defaultValue"
                         },
                         "default": {}
                       }
@@ -621,7 +676,7 @@
                         "default": "equals"
                       },
                       "value": {
-                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/attributes/additionalProperties"
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/parameters/items/properties/defaultValue"
                       }
                     },
                     "required": [
@@ -1012,6 +1067,13 @@
                 "exclusiveMinimum": 0,
                 "default": 1
               },
+              "parameterOverrides": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/definitions/AiNativeDesModelDefinition/properties/parameters/items/properties/defaultValue"
+                },
+                "default": {}
+              },
               "stopTimeSec": {
                 "type": "number",
                 "exclusiveMinimum": 0
@@ -1038,7 +1100,7 @@
         "metadata": {
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/attributes/additionalProperties"
+            "$ref": "#/definitions/AiNativeDesModelDefinition/properties/parameters/items/properties/defaultValue"
           },
           "default": {}
         }

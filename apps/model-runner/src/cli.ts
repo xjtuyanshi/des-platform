@@ -70,6 +70,7 @@ async function runModel(positionalArgs: string[]): Promise<void> {
   console.log(`model=${result.modelId}`);
   console.log(`experiment=${result.experimentId}`);
   console.log(`seed=${result.seed}`);
+  printParameterValues(result.parameterValues);
   console.log(`createdEntities=${result.summary.createdEntities}`);
   console.log(`completedEntities=${result.summary.completedEntities}`);
   console.log(`averageCycleTimeSec=${result.summary.averageCycleTimeSec.toFixed(4)}`);
@@ -146,7 +147,16 @@ function printExperimentSummary(result: GenericDesExperimentResult): void {
   console.log(`replications=${result.replications}`);
   console.log(`baseSeed=${result.baseSeed}`);
   console.log(`seedStride=${result.seedStride}`);
+  printParameterValues(result.parameterValues);
   console.log(`completedEntities.mean=${result.metricStats.completedEntities.mean.toFixed(4)}`);
   console.log(`averageCycleTimeSec.mean=${result.metricStats.averageCycleTimeSec.mean.toFixed(4)}`);
   console.log(`averageCycleTimeSec.halfWidth95=${result.metricStats.averageCycleTimeSec.halfWidth95.toFixed(4)}`);
+}
+
+function printParameterValues(parameterValues: Record<string, unknown>): void {
+  if (Object.keys(parameterValues).length === 0) {
+    return;
+  }
+
+  console.log(`parameters=${JSON.stringify(parameterValues)}`);
 }

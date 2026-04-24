@@ -81,6 +81,7 @@ It is intentionally code/data based instead of drag-and-drop based:
 - AI or a user describes a process as blocks, resource pools, and connections.
 - AI or a user describes a facility as nodes, paths, fleets, storage systems, conveyors, zones, and obstacles.
 - Time fields can be deterministic numbers or seeded distributions such as `constant`, `uniform`, `triangular`, `normal`, and `exponential`.
+- Model parameters give stable names, semantic paths, units, and min/max/step bounds for UI sliders and AI-authored experiment overrides.
 - `@des-platform/model-compiler` validates the DSL before runtime.
 - `@des-platform/process-flow` executes the model on `@des-platform/des-core`.
 - `@des-platform/material-handling` provides the first generic material-flow runtime layer for `MoveByTransporter`, `Store`, `Retrieve`, and `Convey` blocks.
@@ -102,6 +103,7 @@ Validation writes `output/<model-file>-diagnostics.json` with schema, process gr
 
 The runner writes serializable results to `output/<model-id>-<experiment-id>-run.json` with event logs, process snapshots, material-handling state, and summary KPIs.
 Experiment runs write `output/<model-id>-<experiment-id>-experiment.json` with per-replication seeds, KPI summaries, standard deviations, and 95% confidence half-widths.
+Parameterized runs apply `experiment.parameterOverrides` before compilation and include the effective `parameterValues` in run and experiment outputs.
 
 Viewer defaults:
 

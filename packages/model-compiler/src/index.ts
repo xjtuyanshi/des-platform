@@ -3,7 +3,9 @@ import { createProcessFlowSimulation, runProcessFlow, type ProcessFlowRunResult 
 import {
   AiNativeDesModelDefinitionSchema,
   type AiNativeDesModelDefinition,
+  type DslLiteral,
   type ExperimentDefinition,
+  type ModelParameterDefinition,
   type ProcessFlowBlockDefinition
 } from '@des-platform/shared-schema/model-dsl';
 
@@ -40,6 +42,7 @@ export type GenericDesRunResult = {
   seed: number;
   stopTimeSec: number;
   warmupSec: number;
+  parameterValues: Record<string, DslLiteral>;
   nowSec: number;
   summary: GenericRunSummary;
   eventLog: ProcessFlowRunResult['simulation']['eventLog'];
@@ -82,6 +85,7 @@ export type GenericDesExperimentResult = {
   replications: number;
   stopTimeSec: number;
   warmupSec: number;
+  parameterValues: Record<string, DslLiteral>;
   metricStats: Record<string, GenericMetricStats>;
   replicationSummaries: GenericReplicationSummary[];
 };
@@ -120,6 +124,7 @@ export function analyzeDesModel(input: unknown): ModelDiagnosticsReport {
 
   return buildDiagnosticsReport([
     ...analyzeProcessGraph(parsed.data),
+    ...analyzeParameterSemantics(parsed.data),
     ...analyzeMaterialHandlingSemantics(parsed.data),
     ...analyzeExperimentSemantics(parsed.data)
   ]);
@@ -133,16 +138,17 @@ export function compileDesModel(input: unknown): CompiledDesModel {
     model,
     defaultExperiment,
     createRuntime: () =>
-      createProcessFlowSimulation(model.process, {
-        materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
+      createProcessFlowSimulation(materializeModelForExperiment(model, defaultExperiment).process, {
+        materialHandling: createMaterialHandlingRuntimeForExperiment(model, defaultExperiment),
         seed: defaultExperiment?.seed
       }),
     createMaterialHandlingRuntime: () =>
       model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
     runExperiment: (experimentId?: string) => {
       const experiment = resolveExperiment(model, experimentId);
-      return runProcessFlow(model.process, experiment.stopTimeSec, experiment.maxEvents, {
-        materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
+      const configuredModel = materializeModelForExperiment(model, experiment);
+      return runProcessFlow(configuredModel.process, experiment.stopTimeSec, experiment.maxEvents, {
+        materialHandling: configuredModel.materialHandling ? createMaterialHandlingRuntime(configuredModel.materialHandling) : null,
         seed: experiment.seed
       });
     },
@@ -188,7 +194,8 @@ function buildGenericRunResult(
   model: AiNativeDesModelDefinition,
   experiment: ExperimentDefinition,
   run: ProcessFlowRunResult,
-  seed = experiment.seed
+  seed = experiment.seed,
+  parameterValues = resolveParameterValues(model, experiment)
 ): GenericDesRunResult {
   const entities = run.snapshot.entities.map((entity) => ({
     id: entity.id,
@@ -219,6 +226,7 @@ function buildGenericRunResult(
     seed,
     stopTimeSec: experiment.stopTimeSec,
     warmupSec: experiment.warmupSec,
+    parameterValues,
     nowSec: run.snapshot.nowSec,
     summary: {
       createdEntities,
@@ -245,11 +253,13 @@ function runSingleExperimentToResult(
   experiment: ExperimentDefinition,
   seed: number
 ): GenericDesRunResult {
-  const run = runProcessFlow(model.process, experiment.stopTimeSec, experiment.maxEvents, {
-    materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
+  const configuredModel = materializeModelForExperiment(model, experiment);
+  const parameterValues = resolveParameterValues(model, experiment);
+  const run = runProcessFlow(configuredModel.process, experiment.stopTimeSec, experiment.maxEvents, {
+    materialHandling: configuredModel.materialHandling ? createMaterialHandlingRuntime(configuredModel.materialHandling) : null,
     seed
   });
-  return buildGenericRunResult(model, experiment, run, seed);
+  return buildGenericRunResult(configuredModel, experiment, run, seed, parameterValues);
 }
 
 function runReplicationsForModel(
@@ -287,9 +297,131 @@ function runReplicationsForModel(
     replications: experiment.replications,
     stopTimeSec: experiment.stopTimeSec,
     warmupSec: experiment.warmupSec,
+    parameterValues: resolveParameterValues(model, experiment),
     metricStats: buildMetricStats(replicationSummaries),
     replicationSummaries
   };
+}
+
+function materializeModelForExperiment(
+  model: AiNativeDesModelDefinition,
+  experiment: ExperimentDefinition | null
+): AiNativeDesModelDefinition {
+  if (!experiment || model.parameters.length === 0) {
+    return model;
+  }
+
+  const configuredModel = structuredClone(model) as AiNativeDesModelDefinition;
+  const parameterValues = resolveParameterValues(model, experiment);
+  for (const parameter of model.parameters) {
+    applyParameterPath(configuredModel, parameter.path, parameterValues[parameter.id], parameter.id);
+  }
+
+  return AiNativeDesModelDefinitionSchema.parse(configuredModel);
+}
+
+function createMaterialHandlingRuntimeForExperiment(
+  model: AiNativeDesModelDefinition,
+  experiment: ExperimentDefinition | null
+): MaterialHandlingRuntime | null {
+  const configuredModel = materializeModelForExperiment(model, experiment);
+  return configuredModel.materialHandling ? createMaterialHandlingRuntime(configuredModel.materialHandling) : null;
+}
+
+function resolveParameterValues(
+  model: AiNativeDesModelDefinition,
+  experiment: ExperimentDefinition | null
+): Record<string, DslLiteral> {
+  return Object.fromEntries(
+    model.parameters.map((parameter) => [
+      parameter.id,
+      experiment?.parameterOverrides[parameter.id] ?? parameter.defaultValue
+    ])
+  );
+}
+
+function applyParameterPath(
+  root: unknown,
+  path: string,
+  value: DslLiteral | undefined,
+  parameterId: string
+): void {
+  if (value === undefined) {
+    throw new Error(`Parameter ${parameterId} has no value`);
+  }
+
+  const segments = parseParameterPath(path);
+  if (segments.length === 0) {
+    throw new Error(`Parameter ${parameterId} cannot target the model root`);
+  }
+
+  let current = root;
+  for (const segment of segments.slice(0, -1)) {
+    current = getPathChild(current, segment, parameterId, path);
+  }
+
+  setPathChild(current, segments[segments.length - 1]!, value, parameterId, path);
+}
+
+function parseParameterPath(path: string): string[] {
+  if (!path.startsWith('/')) {
+    throw new Error(`Parameter path ${path} must start with /`);
+  }
+  return path
+    .split('/')
+    .slice(1)
+    .map((segment) => segment.replace(/~1/g, '/').replace(/~0/g, '~'));
+}
+
+function getPathChild(container: unknown, segment: string, parameterId: string, path: string): unknown {
+  if (Array.isArray(container)) {
+    const byId = container.find((item) => isRecord(item) && item.id === segment);
+    if (byId !== undefined) {
+      return byId;
+    }
+
+    const index = Number(segment);
+    if (Number.isInteger(index) && index >= 0 && index < container.length) {
+      return container[index];
+    }
+
+    throw new Error(`Parameter ${parameterId} path ${path} cannot resolve array segment ${segment}`);
+  }
+
+  if (isRecord(container) && segment in container) {
+    return container[segment];
+  }
+
+  throw new Error(`Parameter ${parameterId} path ${path} cannot resolve segment ${segment}`);
+}
+
+function setPathChild(container: unknown, segment: string, value: DslLiteral, parameterId: string, path: string): void {
+  if (Array.isArray(container)) {
+    const byIdIndex = container.findIndex((item) => isRecord(item) && item.id === segment);
+    if (byIdIndex >= 0) {
+      container[byIdIndex] = value;
+      return;
+    }
+
+    const index = Number(segment);
+    if (Number.isInteger(index) && index >= 0 && index < container.length) {
+      container[index] = value;
+      return;
+    }
+
+    throw new Error(`Parameter ${parameterId} path ${path} cannot set array segment ${segment}`);
+  }
+
+  if (isRecord(container) && segment in container) {
+    container[segment] = value;
+    return;
+  }
+
+  throw new Error(`Parameter ${parameterId} path ${path} cannot set segment ${segment}`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function buildMetricStats(replications: GenericReplicationSummary[]): Record<string, GenericMetricStats> {
@@ -424,6 +556,41 @@ function analyzeProcessGraph(model: AiNativeDesModelDefinition): ModelDiagnostic
   }
 
   return diagnostics;
+}
+
+function analyzeParameterSemantics(model: AiNativeDesModelDefinition): ModelDiagnostic[] {
+  const diagnostics: ModelDiagnostic[] = [];
+
+  for (const parameter of model.parameters) {
+    const pathError = validateParameterPath(model, parameter);
+    if (pathError) {
+      diagnostics.push(error('parameter.path-invalid', `parameters.${parameter.id}.path`, pathError.message));
+    }
+  }
+
+  for (const experiment of model.experiments) {
+    try {
+      materializeModelForExperiment(model, experiment);
+    } catch (materializeError) {
+      diagnostics.push(error(
+        'parameter.override-invalid',
+        `experiments.${experiment.id}.parameterOverrides`,
+        materializeError instanceof Error ? materializeError.message : `Experiment ${experiment.id} has invalid parameter overrides`
+      ));
+    }
+  }
+
+  return diagnostics;
+}
+
+function validateParameterPath(model: AiNativeDesModelDefinition, parameter: ModelParameterDefinition): Error | null {
+  try {
+    const configuredModel = structuredClone(model) as AiNativeDesModelDefinition;
+    applyParameterPath(configuredModel, parameter.path, parameter.defaultValue, parameter.id);
+    return null;
+  } catch (pathError) {
+    return pathError instanceof Error ? pathError : new Error(String(pathError));
+  }
 }
 
 function analyzeMaterialHandlingSemantics(model: AiNativeDesModelDefinition): ModelDiagnostic[] {

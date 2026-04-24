@@ -141,6 +141,41 @@ describe('model compiler', () => {
     expect(JSON.parse(JSON.stringify(result)).modelId).toBe('serializable');
   });
 
+  it('applies named parameter overrides before running a model', () => {
+    const result = runDesModelToResult({
+      schemaVersion: 'des-platform.v1',
+      id: 'parameterized',
+      name: 'Parameterized',
+      parameters: [
+        {
+          id: 'service-time',
+          path: '/process/blocks/service/durationSec',
+          valueType: 'number',
+          defaultValue: 3,
+          min: 1,
+          max: 10
+        }
+      ],
+      process: {
+        id: 'flow',
+        resourcePools: [{ id: 'server', capacity: 1 }],
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'service', kind: 'service', resourcePoolId: 'server', durationSec: 3 },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [
+          { from: 'source', to: 'service' },
+          { from: 'service', to: 'sink' }
+        ]
+      },
+      experiments: [{ id: 'slow', stopTimeSec: 20, parameterOverrides: { 'service-time': 8 } }]
+    }, 'slow');
+
+    expect(result.parameterValues).toEqual({ 'service-time': 8 });
+    expect(result.summary.entities[0]?.completedAtSec).toBe(8);
+  });
+
   it('builds replication experiment reports with seeded KPI statistics', () => {
     const report = runDesModelReplicationsToResult({
       schemaVersion: 'des-platform.v1',
@@ -278,5 +313,33 @@ describe('model compiler', () => {
 
     expect(report.valid).toBe(false);
     expect(report.errors.map((diagnostic) => diagnostic.code)).toContain('schema.invalid');
+  });
+
+  it('reports invalid parameter paths as static diagnostics', () => {
+    const report = analyzeDesModel({
+      schemaVersion: 'des-platform.v1',
+      id: 'bad-parameter-path',
+      name: 'Bad Parameter Path',
+      parameters: [
+        {
+          id: 'missing-path',
+          path: '/process/blocks/missing/durationSec',
+          valueType: 'number',
+          defaultValue: 1
+        }
+      ],
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [{ from: 'source', to: 'sink' }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+    });
+
+    expect(report.valid).toBe(false);
+    expect(report.errors.map((diagnostic) => diagnostic.code)).toContain('parameter.path-invalid');
   });
 });

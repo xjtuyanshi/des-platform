@@ -181,6 +181,16 @@ describe('shared schema', () => {
       schemaVersion: 'des-platform.v1',
       id: 'stochastic-smoke',
       name: 'Stochastic Smoke',
+      parameters: [
+        {
+          id: 'arrival-mean-sec',
+          path: '/process/blocks/source/intervalSec/mean',
+          valueType: 'number',
+          defaultValue: 5,
+          min: 1,
+          max: 20
+        }
+      ],
       process: {
         id: 'flow',
         blocks: [
@@ -193,12 +203,13 @@ describe('shared schema', () => {
           { from: 'delay', to: 'sink' }
         ]
       },
-      experiments: [{ id: 'baseline', seed: 1234, stopTimeSec: 100 }]
+      experiments: [{ id: 'baseline', seed: 1234, parameterOverrides: { 'arrival-mean-sec': 8 }, stopTimeSec: 100 }]
     });
 
     expect(model.experiments[0]?.seed).toBe(1234);
     expect(model.experiments[0]?.replications).toBe(1);
     expect(model.experiments[0]?.seedStride).toBe(1);
+    expect(model.experiments[0]?.parameterOverrides['arrival-mean-sec']).toBe(8);
     expect(model.process.blocks[1]?.kind).toBe('delay');
     expect(() =>
       AiNativeDesModelDefinitionSchema.parse({
