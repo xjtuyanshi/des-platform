@@ -1,0 +1,325 @@
+{
+  "schemaVersion": "des-platform.v1",
+  "id": "fulfillment-center-mvp",
+  "name": "Fulfillment Center MVP",
+  "description": "Generic AI-native DES model combining Process Flow, seeded branching, AMR movement, storage, packing resources, conveyors, replications, and parameter sweeps.",
+  "parameters": [
+    {
+      "id": "order-mean-sec",
+      "name": "Mean order interarrival time",
+      "path": "/process/blocks/source/intervalSec/mean",
+      "valueType": "number",
+      "defaultValue": 45,
+      "min": 20,
+      "max": 90,
+      "step": 5,
+      "unit": "s"
+    },
+    {
+      "id": "amr-speed-mps",
+      "name": "AMR speed",
+      "path": "/materialHandling/transporterFleets/amr/speedMps",
+      "valueType": "number",
+      "defaultValue": 1.5,
+      "min": 0.8,
+      "max": 2.5,
+      "step": 0.1,
+      "unit": "m/s"
+    },
+    {
+      "id": "packers",
+      "name": "Packing operators",
+      "path": "/process/resourcePools/packer/capacity",
+      "valueType": "integer",
+      "defaultValue": 2,
+      "min": 1,
+      "max": 4,
+      "step": 1,
+      "unit": "operator"
+    },
+    {
+      "id": "conveyor-speed-mps",
+      "name": "Outbound conveyor speed",
+      "path": "/materialHandling/conveyors/pack-ship/speedMps",
+      "valueType": "number",
+      "defaultValue": 1.1,
+      "min": 0.5,
+      "max": 2,
+      "step": 0.1,
+      "unit": "m/s"
+    }
+  ],
+  "process": {
+    "id": "fulfillment-flow",
+    "resourcePools": [
+      {
+        "id": "packer",
+        "name": "Packing operators",
+        "capacity": 2
+      }
+    ],
+    "blocks": [
+      {
+        "id": "source",
+        "kind": "source",
+        "entityType": "order",
+        "startAtSec": 0,
+        "intervalSec": {
+          "kind": "exponential",
+          "mean": 45
+        },
+        "maxArrivals": 18,
+        "attributes": {
+          "channel": "online"
+        }
+      },
+      {
+        "id": "select-priority",
+        "kind": "selectOutput"
+      },
+      {
+        "id": "assign-express",
+        "kind": "assign",
+        "assignments": {
+          "serviceClass": "express",
+          "promisedLeadTimeSec": 600
+        }
+      },
+      {
+        "id": "assign-standard",
+        "kind": "assign",
+        "assignments": {
+          "serviceClass": "standard",
+          "promisedLeadTimeSec": 1200
+        }
+      },
+      {
+        "id": "move-to-rack",
+        "kind": "moveByTransporter",
+        "fleetId": "amr",
+        "fromNodeId": "dock",
+        "toNodeId": "rack",
+        "loadTimeSec": 5,
+        "unloadTimeSec": 4
+      },
+      {
+        "id": "store-rack",
+        "kind": "store",
+        "storageId": "rack-a"
+      },
+      {
+        "id": "retrieve-rack",
+        "kind": "retrieve",
+        "storageId": "rack-a"
+      },
+      {
+        "id": "move-to-pack",
+        "kind": "moveByTransporter",
+        "fleetId": "amr",
+        "fromNodeId": "rack",
+        "toNodeId": "pack",
+        "loadTimeSec": 3,
+        "unloadTimeSec": 3
+      },
+      {
+        "id": "pack",
+        "kind": "service",
+        "resourcePoolId": "packer",
+        "durationSec": {
+          "kind": "triangular",
+          "min": 35,
+          "mode": 55,
+          "max": 95
+        },
+        "queueCapacity": 20
+      },
+      {
+        "id": "convey-to-ship",
+        "kind": "convey",
+        "conveyorId": "pack-ship"
+      },
+      {
+        "id": "sink",
+        "kind": "sink"
+      }
+    ],
+    "connections": [
+      {
+        "from": "source",
+        "to": "select-priority"
+      },
+      {
+        "from": "select-priority",
+        "to": "assign-express",
+        "probability": 0.25
+      },
+      {
+        "from": "select-priority",
+        "to": "assign-standard"
+      },
+      {
+        "from": "assign-express",
+        "to": "move-to-rack"
+      },
+      {
+        "from": "assign-standard",
+        "to": "move-to-rack"
+      },
+      {
+        "from": "move-to-rack",
+        "to": "store-rack"
+      },
+      {
+        "from": "store-rack",
+        "to": "retrieve-rack"
+      },
+      {
+        "from": "retrieve-rack",
+        "to": "move-to-pack"
+      },
+      {
+        "from": "move-to-pack",
+        "to": "pack"
+      },
+      {
+        "from": "pack",
+        "to": "convey-to-ship"
+      },
+      {
+        "from": "convey-to-ship",
+        "to": "sink"
+      }
+    ]
+  },
+  "materialHandling": {
+    "id": "fulfillment-layout",
+    "nodes": [
+      {
+        "id": "dock",
+        "type": "dock",
+        "x": 0,
+        "z": 0
+      },
+      {
+        "id": "rack",
+        "type": "storage",
+        "x": 18,
+        "z": 0
+      },
+      {
+        "id": "pack",
+        "type": "station",
+        "x": 18,
+        "z": 8
+      },
+      {
+        "id": "ship",
+        "type": "dock",
+        "x": 30,
+        "z": 8
+      }
+    ],
+    "paths": [
+      {
+        "id": "dock-rack",
+        "from": "dock",
+        "to": "rack",
+        "lengthM": 18,
+        "speedLimitMps": 1.8,
+        "bidirectional": true
+      },
+      {
+        "id": "rack-pack",
+        "from": "rack",
+        "to": "pack",
+        "lengthM": 8,
+        "speedLimitMps": 1.4,
+        "bidirectional": true
+      }
+    ],
+    "transporterFleets": [
+      {
+        "id": "amr",
+        "vehicleType": "amr",
+        "navigation": "path-guided",
+        "count": 2,
+        "homeNodeId": "dock",
+        "speedMps": 1.5,
+        "accelerationMps2": 0.8,
+        "decelerationMps2": 0.8,
+        "lengthM": 1.2,
+        "widthM": 0.8,
+        "minClearanceM": 0.3
+      }
+    ],
+    "storageSystems": [
+      {
+        "id": "rack-a",
+        "nodeId": "rack",
+        "capacity": 4
+      }
+    ],
+    "conveyors": [
+      {
+        "id": "pack-ship",
+        "entryNodeId": "pack",
+        "exitNodeId": "ship",
+        "lengthM": 12,
+        "speedMps": 1.1,
+        "capacity": 6
+      }
+    ],
+    "zones": [
+      {
+        "id": "amr-aisle",
+        "kind": "traffic-control",
+        "polygon": [
+          { "x": -2, "z": -2 },
+          { "x": 20, "z": -2 },
+          { "x": 20, "z": 10 },
+          { "x": -2, "z": 10 }
+        ]
+      }
+    ],
+    "obstacles": [
+      {
+        "id": "support-column",
+        "x": 9,
+        "z": 4,
+        "widthM": 1,
+        "depthM": 1,
+        "heightM": 4
+      }
+    ]
+  },
+  "experiments": [
+    {
+      "id": "baseline",
+      "name": "Baseline",
+      "seed": 20260501,
+      "replications": 5,
+      "seedStride": 1,
+      "parameterOverrides": {
+        "order-mean-sec": 45,
+        "amr-speed-mps": 1.5,
+        "packers": 2,
+        "conveyor-speed-mps": 1.1
+      },
+      "stopTimeSec": 1800
+    },
+    {
+      "id": "throughput-sweep",
+      "name": "Throughput Sweep",
+      "seed": 20260510,
+      "replications": 3,
+      "seedStride": 1,
+      "sweep": {
+        "order-mean-sec": [30, 45],
+        "amr-speed-mps": [1, 1.5, 2],
+        "packers": [1, 2, 3],
+        "conveyor-speed-mps": [0.8, 1.2]
+      },
+      "stopTimeSec": 1800
+    }
+  ]
+}

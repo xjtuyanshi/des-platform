@@ -83,8 +83,29 @@ function timeValueCanAdvance(value: z.infer<typeof TimeValueDefinitionSchema>): 
 
 export const EntityConditionSchema = z.object({
   attribute: z.string(),
-  operator: z.enum(['equals', 'not-equals']).default('equals'),
+  operator: z.enum([
+    'equals',
+    'not-equals',
+    'greater-than',
+    'greater-than-or-equal',
+    'less-than',
+    'less-than-or-equal'
+  ]).default('equals'),
   value: DslLiteralSchema
+}).superRefine((condition, context) => {
+  const numericOperators = new Set([
+    'greater-than',
+    'greater-than-or-equal',
+    'less-than',
+    'less-than-or-equal'
+  ]);
+  if (numericOperators.has(condition.operator) && typeof condition.value !== 'number') {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['value'],
+      message: `Condition ${condition.operator} requires a numeric comparison value`
+    });
+  }
 });
 
 export const ModelParameterDefinitionSchema = z.object({
@@ -388,6 +409,11 @@ export const ReleaseBlockDefinitionSchema = BlockBaseSchema.extend({
   quantity: z.number().int().positive().default(1)
 });
 
+export const AssignBlockDefinitionSchema = BlockBaseSchema.extend({
+  kind: z.literal('assign'),
+  assignments: z.record(DslLiteralSchema).default({})
+});
+
 export const SelectOutputBlockDefinitionSchema = BlockBaseSchema.extend({
   kind: z.literal('selectOutput')
 });
@@ -429,6 +455,7 @@ export const ProcessFlowBlockDefinitionSchema = z.discriminatedUnion('kind', [
   ServiceBlockDefinitionSchema,
   SeizeBlockDefinitionSchema,
   ReleaseBlockDefinitionSchema,
+  AssignBlockDefinitionSchema,
   SelectOutputBlockDefinitionSchema,
   SinkBlockDefinitionSchema,
   MoveByTransporterBlockDefinitionSchema,
@@ -440,7 +467,8 @@ export const ProcessFlowBlockDefinitionSchema = z.discriminatedUnion('kind', [
 export const ProcessConnectionDefinitionSchema = z.object({
   from: z.string(),
   to: z.string(),
-  condition: EntityConditionSchema.optional()
+  condition: EntityConditionSchema.optional(),
+  probability: z.number().positive().max(1).optional()
 });
 
 export const ProcessFlowDefinitionSchema = z.object({
@@ -502,6 +530,7 @@ export const ProcessFlowDefinitionSchema = z.object({
   }
 
   for (const connection of flow.connections) {
+    const fromBlock = blockIds.has(connection.from) ? flow.blocks.find((block) => block.id === connection.from) : undefined;
     if (!blockIds.has(connection.from)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -514,6 +543,30 @@ export const ProcessFlowDefinitionSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ['connections'],
         message: `Connection references unknown to block ${connection.to}`
+      });
+    }
+    if (connection.probability !== undefined && fromBlock?.kind !== 'selectOutput') {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['connections'],
+        message: `Connection probability from ${connection.from} is only supported on selectOutput blocks`
+      });
+    }
+  }
+
+  for (const block of flow.blocks) {
+    if (block.kind !== 'selectOutput') {
+      continue;
+    }
+
+    const unconditionalProbabilitySum = flow.connections
+      .filter((connection) => connection.from === block.id && !connection.condition)
+      .reduce((sum, connection) => sum + (connection.probability ?? 0), 0);
+    if (unconditionalProbabilitySum > 1 + 1e-12) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['connections'],
+        message: `SelectOutput block ${block.id} unconditional probabilities cannot sum above 1`
       });
     }
   }

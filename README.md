@@ -67,6 +67,8 @@ pnpm run:model
 pnpm run:experiment
 pnpm run:sweep
 pnpm validate:model
+pnpm report:model
+pnpm mvp:generic
 pnpm dev:api
 pnpm dev:viewer
 pnpm report:baseline
@@ -81,11 +83,14 @@ It is intentionally code/data based instead of drag-and-drop based:
 
 - AI or a user describes a process as blocks, resource pools, and connections.
 - AI or a user describes a facility as nodes, paths, fleets, storage systems, conveyors, zones, and obstacles.
+- Process Flow blocks now cover Source, Queue, Delay, Service, Seize, Release, Assign, SelectOutput, Sink, MoveByTransporter, Store, Retrieve, and Convey.
+- SelectOutput can route by attribute conditions, numeric comparisons, fallback branches, or seeded probability branches.
 - Time fields can be deterministic numbers or seeded distributions such as `constant`, `uniform`, `triangular`, `normal`, and `exponential`.
 - Model parameters give stable names, semantic paths, units, and min/max/step bounds for UI sliders and AI-authored experiment overrides.
 - `@des-platform/model-compiler` validates the DSL before runtime.
 - `@des-platform/process-flow` executes the model on `@des-platform/des-core`.
 - `@des-platform/material-handling` provides the first generic material-flow runtime layer for `MoveByTransporter`, `Store`, `Retrieve`, and `Convey` blocks.
+- Transporter moves include empty travel from the vehicle's current node to the pickup node plus loaded travel to the destination node.
 - Generated JSON Schemas include `process-flow.schema.json`, `material-handling.schema.json`, and `model-dsl.schema.json`.
 
 Generic models can be run without the viewer:
@@ -99,6 +104,7 @@ pnpm run:model config/models/warehouse-material-flow.json baseline
 pnpm run:model config/models/stochastic-single-machine.json seed-20260424
 pnpm run:experiment config/models/stochastic-single-machine.json seed-20260424
 pnpm run:sweep config/models/stochastic-single-machine.json arrival-service-sweep
+pnpm mvp:generic
 ```
 
 Validation writes `output/<model-file>-diagnostics.json` with schema, process graph, material route, and experiment diagnostics. This is the first guardrail for AI-authored models: an agent can generate a model, validate it, repair specific diagnostic codes, and only then run the simulation.
@@ -107,6 +113,13 @@ The runner writes serializable results to `output/<model-id>-<experiment-id>-run
 Experiment runs write `output/<model-id>-<experiment-id>-experiment.json` with per-replication seeds, KPI summaries, standard deviations, and 95% confidence half-widths.
 Parameterized runs apply `experiment.parameterOverrides` before compilation and include the effective `parameterValues` in run and experiment outputs.
 Sweep runs write `output/<model-id>-<experiment-id>-sweep.json` with one experiment report per parameter combination, using the same seed sequence across cases for cleaner comparisons.
+Generic report runs write `output/<model-id>-<experiment-id>-*.html` for model-runner outputs:
+
+```bash
+pnpm report:model output/fulfillment-center-mvp-throughput-sweep-sweep.json
+```
+
+The current generic MVP scenario is [fulfillment-center-mvp.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/models/fulfillment-center-mvp.json). It combines probabilistic order classes, assignment logic, AMR moves, storage, packing resources, conveyor travel, replications, parameter sweeps, and an HTML report.
 
 Viewer defaults:
 

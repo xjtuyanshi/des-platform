@@ -141,6 +141,58 @@ describe('ProcessFlowRuntime', () => {
     expect(result.snapshot.blockStats['standard-sink']?.entered).toBe(1);
   });
 
+  it('assigns attributes and routes selectOutput blocks with numeric conditions', () => {
+    const flow: ProcessFlowDefinition = {
+      id: 'assign-and-numeric-select',
+      resourcePools: [],
+      blocks: [
+        { id: 'source', kind: 'source', entityType: 'order', startAtSec: 0, scheduleAtSec: [0], attributes: { score: 2 } },
+        { id: 'assign', kind: 'assign', assignments: { score: 7, lane: 'fast' } },
+        { id: 'select', kind: 'selectOutput' },
+        { id: 'fast-sink', kind: 'sink' },
+        { id: 'standard-sink', kind: 'sink' }
+      ],
+      connections: [
+        { from: 'source', to: 'assign' },
+        { from: 'assign', to: 'select' },
+        { from: 'select', to: 'fast-sink', condition: { attribute: 'score', operator: 'greater-than-or-equal', value: 5 } },
+        { from: 'select', to: 'standard-sink' }
+      ]
+    };
+
+    const result = runProcessFlow(flow, 5);
+
+    expect(result.snapshot.completedEntities).toBe(1);
+    expect(result.snapshot.entities[0]?.attributes).toMatchObject({ score: 7, lane: 'fast' });
+    expect(result.snapshot.blockStats['fast-sink']?.entered).toBe(1);
+    expect(result.snapshot.blockStats['standard-sink']?.entered).toBe(0);
+  });
+
+  it('routes selectOutput probability branches with seeded randomness', () => {
+    const flow: ProcessFlowDefinition = {
+      id: 'probability-select',
+      resourcePools: [],
+      blocks: [
+        { id: 'source', kind: 'source', entityType: 'order', startAtSec: 0, scheduleAtSec: [0, 1, 2, 3, 4, 5], attributes: {} },
+        { id: 'select', kind: 'selectOutput' },
+        { id: 'express-sink', kind: 'sink' },
+        { id: 'standard-sink', kind: 'sink' }
+      ],
+      connections: [
+        { from: 'source', to: 'select' },
+        { from: 'select', to: 'express-sink', probability: 0.25 },
+        { from: 'select', to: 'standard-sink' }
+      ]
+    };
+
+    const resultA = runProcessFlow(flow, 10, undefined, { seed: 123 });
+    const resultB = runProcessFlow(flow, 10, undefined, { seed: 123 });
+
+    expect(resultA.snapshot.blockStats['express-sink']?.entered).toBe(resultB.snapshot.blockStats['express-sink']?.entered);
+    expect(resultA.snapshot.blockStats['standard-sink']?.entered).toBe(resultB.snapshot.blockStats['standard-sink']?.entered);
+    expect((resultA.snapshot.blockStats['express-sink']?.entered ?? 0) + (resultA.snapshot.blockStats['standard-sink']?.entered ?? 0)).toBe(6);
+  });
+
   it('executes material handling blocks through a material runtime', () => {
     const materialHandling = createMaterialHandlingRuntime({
       id: 'warehouse',
@@ -189,5 +241,42 @@ describe('ProcessFlowRuntime', () => {
       currentNodeId: 'storage'
     });
     expect(result.snapshot.materialHandling?.storageSystems[0]?.slots[0]?.itemId).toBeNull();
+  });
+
+  it('includes empty transporter travel from the current vehicle node to the pickup node', () => {
+    const materialHandling = createMaterialHandlingRuntime({
+      id: 'empty-travel',
+      units: 'meter',
+      nodes: [
+        { id: 'dock', type: 'dock', x: 0, z: 0 },
+        { id: 'rack', type: 'storage', x: 10, z: 0 }
+      ],
+      paths: [{ id: 'dock-rack', from: 'dock', to: 'rack', lengthM: 10, speedLimitMps: 1, bidirectional: true, mode: 'path-guided' }],
+      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'dock', speedMps: 1, minClearanceM: 0 }],
+      storageSystems: [],
+      conveyors: [],
+      zones: [],
+      obstacles: []
+    });
+    const flow: ProcessFlowDefinition = {
+      id: 'empty-travel-flow',
+      resourcePools: [],
+      blocks: [
+        { id: 'source', kind: 'source', entityType: 'pallet', startAtSec: 0, scheduleAtSec: [0, 1], attributes: {} },
+        { id: 'move', kind: 'moveByTransporter', fleetId: 'amr', fromNodeId: 'dock', toNodeId: 'rack', loadTimeSec: 0, unloadTimeSec: 0 },
+        { id: 'sink', kind: 'sink' }
+      ],
+      connections: [
+        { from: 'source', to: 'move' },
+        { from: 'move', to: 'sink' }
+      ]
+    };
+
+    const result = runProcessFlow(flow, 40, undefined, { materialHandling });
+
+    expect(result.snapshot.entities.map((entity) => entity.completedAtSec)).toEqual([10, 30]);
+    expect(result.snapshot.entities[0]?.attributes.lastEmptyRouteTravelTimeSec).toBe(0);
+    expect(result.snapshot.entities[1]?.attributes.lastEmptyRouteTravelTimeSec).toBe(10);
+    expect(result.snapshot.entities[1]?.attributes.lastRouteTravelTimeSec).toBe(20);
   });
 });

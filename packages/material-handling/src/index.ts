@@ -37,9 +37,12 @@ export type StorageSystemState = {
 
 export type MaterialHandlingSnapshot = {
   nodes: MaterialNodeDefinition[];
+  paths: MaterialPathDefinition[];
   transporterUnits: TransporterUnitState[];
   storageSystems: StorageSystemState[];
   conveyors: ConveyorDefinition[];
+  zones: MaterialHandlingDefinition['zones'];
+  obstacles: MaterialHandlingDefinition['obstacles'];
 };
 
 type PathEdge = {
@@ -88,12 +91,18 @@ export class MaterialHandlingRuntime {
   getSnapshot(): MaterialHandlingSnapshot {
     return {
       nodes: [...this.nodeMap.values()].map((node) => ({ ...node })),
+      paths: this.definition.paths.map((path) => ({ ...path })),
       transporterUnits: [...this.transporterUnits.values()].map((unit) => ({ ...unit })),
       storageSystems: [...this.storageSystems.values()].map((storage) => ({
         ...storage,
         slots: storage.slots.map((slot) => ({ ...slot }))
       })),
-      conveyors: this.definition.conveyors.map((conveyor) => ({ ...conveyor }))
+      conveyors: this.definition.conveyors.map((conveyor) => ({ ...conveyor })),
+      zones: this.definition.zones.map((zone) => ({
+        ...zone,
+        polygon: zone.polygon.map((point) => ({ ...point }))
+      })),
+      obstacles: this.definition.obstacles.map((obstacle) => ({ ...obstacle }))
     };
   }
 

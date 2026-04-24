@@ -5,9 +5,11 @@
   "main": "src/index.ts",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "report:baseline": "tsx src/cli.ts baseline"
+    "report:baseline": "tsx src/cli.ts",
+    "report:model": "tsx src/cli.ts --generic"
   },
   "dependencies": {
+    "@des-platform/model-compiler": "workspace:*",
     "@des-platform/shared-schema": "workspace:*",
     "@des-platform/simulation-core": "workspace:*"
   }

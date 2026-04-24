@@ -32,6 +32,9 @@ importers:
 
   apps/reporting:
     dependencies:
+      '@des-platform/model-compiler':
+        specifier: workspace:*
+        version: link:../../packages/model-compiler
       '@des-platform/shared-schema':
         specifier: workspace:*
         version: link:../../packages/shared-schema

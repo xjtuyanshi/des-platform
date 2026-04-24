@@ -412,6 +412,36 @@
                   },
                   "kind": {
                     "type": "string",
+                    "const": "assign"
+                  },
+                  "assignments": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/attributes/additionalProperties"
+                    },
+                    "default": {}
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
                     "const": "selectOutput"
                   }
                 },
@@ -599,7 +629,11 @@
                     "type": "string",
                     "enum": [
                       "equals",
-                      "not-equals"
+                      "not-equals",
+                      "greater-than",
+                      "greater-than-or-equal",
+                      "less-than",
+                      "less-than-or-equal"
                     ],
                     "default": "equals"
                   },
@@ -612,6 +646,11 @@
                   "value"
                 ],
                 "additionalProperties": false
+              },
+              "probability": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
               }
             },
             "required": [

@@ -232,4 +232,59 @@ describe('shared schema', () => {
       })
     ).toThrow(/intervalSec must be able to advance simulation time/);
   });
+
+  it('validates AI-native assign blocks, numeric conditions, and probability branches', () => {
+    const model = AiNativeDesModelDefinitionSchema.parse({
+      schemaVersion: 'des-platform.v1',
+      id: 'process-flow-control-smoke',
+      name: 'Process Flow Control Smoke',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'assign', kind: 'assign', assignments: { score: 10, lane: 'fast' } },
+          { id: 'select', kind: 'selectOutput' },
+          { id: 'fast-sink', kind: 'sink' },
+          { id: 'fallback-sink', kind: 'sink' }
+        ],
+        connections: [
+          { from: 'source', to: 'assign' },
+          { from: 'assign', to: 'select' },
+          { from: 'select', to: 'fast-sink', condition: { attribute: 'score', operator: 'greater-than', value: 5 }, probability: 0.7 },
+          { from: 'select', to: 'fallback-sink' }
+        ]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+    });
+
+    expect(model.process.blocks[1]?.kind).toBe('assign');
+    expect(model.process.connections[2]?.probability).toBe(0.7);
+    expect(() =>
+      AiNativeDesModelDefinitionSchema.parse({
+        ...model,
+        process: {
+          ...model.process,
+          connections: [
+            { from: 'source', to: 'assign', probability: 0.5 },
+            { from: 'assign', to: 'select' },
+            { from: 'select', to: 'fast-sink' }
+          ]
+        }
+      })
+    ).toThrow(/only supported on selectOutput/);
+    expect(() =>
+      AiNativeDesModelDefinitionSchema.parse({
+        ...model,
+        process: {
+          ...model.process,
+          connections: [
+            { from: 'source', to: 'assign' },
+            { from: 'assign', to: 'select' },
+            { from: 'select', to: 'fast-sink', probability: 0.7 },
+            { from: 'select', to: 'fallback-sink', probability: 0.6 }
+          ]
+        }
+      })
+    ).toThrow(/probabilities cannot sum above 1/);
+  });
 });

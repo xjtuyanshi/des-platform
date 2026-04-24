@@ -17,6 +17,8 @@
     "validate:model": "pnpm --filter model-runner run validate",
     "simulate:baseline": "pnpm --filter sim-api simulate:baseline",
     "report:baseline": "pnpm --filter reporting report:baseline",
+    "report:model": "pnpm --filter reporting report:model",
+    "mvp:generic": "pnpm validate:model config/models/fulfillment-center-mvp.json && pnpm run:model config/models/fulfillment-center-mvp.json baseline && pnpm run:experiment config/models/fulfillment-center-mvp.json baseline && pnpm run:sweep config/models/fulfillment-center-mvp.json throughput-sweep && pnpm report:model output/fulfillment-center-mvp-throughput-sweep-sweep.json",
     "build": "pnpm run generate:schema && pnpm run typecheck && pnpm --filter viewer build"
   },
   "devDependencies": {

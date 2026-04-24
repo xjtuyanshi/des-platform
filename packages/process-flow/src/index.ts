@@ -340,6 +340,14 @@ export class ProcessFlowRuntime {
         this.incrementCompleted(block.id);
         this.routeFromBlock(sim, block.id, entity);
         break;
+      case 'assign':
+        entity.attributes = {
+          ...entity.attributes,
+          ...block.assignments
+        };
+        this.incrementCompleted(block.id);
+        this.routeFromBlock(sim, block.id, entity);
+        break;
       case 'selectOutput':
         this.incrementCompleted(block.id);
         this.routeFromBlock(sim, block.id, entity);
@@ -531,15 +539,24 @@ export class ProcessFlowRuntime {
     unit: TransporterUnitState
   ): void {
     const materialHandling = this.requireMaterialHandling(request.blockId);
-    const route = materialHandling.findShortestRoute(request.fromNodeId, request.toNodeId, request.fleetId);
+    const emptyRoute = materialHandling.findShortestRoute(unit.currentNodeId, request.fromNodeId, request.fleetId);
+    const loadedRoute = materialHandling.findShortestRoute(request.fromNodeId, request.toNodeId, request.fleetId);
+    const routeDistanceM = emptyRoute.distanceM + loadedRoute.distanceM;
+    const routeTravelTimeSec = emptyRoute.travelTimeSec + loadedRoute.travelTimeSec;
     const entity = this.requireEntity(request.entityId);
-    entity.attributes.lastRouteDistanceM = route.distanceM;
-    entity.attributes.lastRouteTravelTimeSec = route.travelTimeSec;
-    entity.attributes.lastRoutePath = route.pathIds.join('>');
+    entity.attributes.lastEmptyRouteDistanceM = emptyRoute.distanceM;
+    entity.attributes.lastEmptyRouteTravelTimeSec = emptyRoute.travelTimeSec;
+    entity.attributes.lastEmptyRoutePath = emptyRoute.pathIds.join('>');
+    entity.attributes.lastLoadedRouteDistanceM = loadedRoute.distanceM;
+    entity.attributes.lastLoadedRouteTravelTimeSec = loadedRoute.travelTimeSec;
+    entity.attributes.lastLoadedRoutePath = loadedRoute.pathIds.join('>');
+    entity.attributes.lastRouteDistanceM = routeDistanceM;
+    entity.attributes.lastRouteTravelTimeSec = routeTravelTimeSec;
+    entity.attributes.lastRoutePath = [...emptyRoute.pathIds, ...loadedRoute.pathIds].join('>');
 
     sim.scheduleIn(
       TRANSPORT_COMPLETE_EVENT,
-      request.loadTimeSec + route.travelTimeSec + request.unloadTimeSec,
+      request.loadTimeSec + routeTravelTimeSec + request.unloadTimeSec,
       {
         entityId: request.entityId,
         blockId: request.blockId,
@@ -568,11 +585,9 @@ export class ProcessFlowRuntime {
     }
 
     const block = this.requireBlock(blockId);
-    const matched =
-      block.kind === 'selectOutput'
-        ? connections.find((connection) => connection.condition && this.matchesCondition(entity, connection)) ??
-          connections.find((connection) => !connection.condition)
-        : connections.find((connection) => this.matchesCondition(entity, connection));
+    const matched = block.kind === 'selectOutput'
+      ? this.selectOutputConnection(connections, entity)
+      : connections.find((connection) => this.matchesCondition(entity, connection));
 
     if (!matched) {
       throw new Error(`Block ${blockId} has no outgoing connection matching entity ${entity.id}`);
@@ -581,14 +596,57 @@ export class ProcessFlowRuntime {
     return matched;
   }
 
+  private selectOutputConnection(connections: ProcessConnectionDefinition[], entity: ProcessEntity): ProcessConnectionDefinition | undefined {
+    const conditionalMatches = connections.filter((connection) => connection.condition && this.matchesCondition(entity, connection));
+    const unconditional = connections.filter((connection) => !connection.condition);
+    const eligible = conditionalMatches.length > 0 ? [...conditionalMatches, ...unconditional] : unconditional;
+    const probabilistic = eligible.filter((connection) => connection.probability !== undefined);
+
+    if (probabilistic.length === 0) {
+      return conditionalMatches[0] ?? unconditional[0];
+    }
+
+    const draw = this.random();
+    let cumulativeProbability = 0;
+    for (const connection of probabilistic) {
+      cumulativeProbability += connection.probability ?? 0;
+      if (draw <= cumulativeProbability || Math.abs(draw - cumulativeProbability) <= 1e-12) {
+        return connection;
+      }
+    }
+
+    if (cumulativeProbability >= 1 - 1e-12) {
+      return probabilistic.at(-1);
+    }
+
+    return eligible.find((connection) => connection.probability === undefined);
+  }
+
   private matchesCondition(entity: ProcessEntity, connection: ProcessConnectionDefinition): boolean {
     if (!connection.condition) {
       return true;
     }
 
     const actual = entity.attributes[connection.condition.attribute];
-    const equals = actual === connection.condition.value;
-    return connection.condition.operator === 'equals' ? equals : !equals;
+    const expected = connection.condition.value;
+
+    switch (connection.condition.operator) {
+      case 'equals':
+        return actual === expected;
+      case 'not-equals':
+        return actual !== expected;
+      case 'greater-than':
+        return typeof actual === 'number' && typeof expected === 'number' && actual > expected;
+      case 'greater-than-or-equal':
+        return typeof actual === 'number' && typeof expected === 'number' && actual >= expected;
+      case 'less-than':
+        return typeof actual === 'number' && typeof expected === 'number' && actual < expected;
+      case 'less-than-or-equal':
+        return typeof actual === 'number' && typeof expected === 'number' && actual <= expected;
+      default:
+        connection.condition.operator satisfies never;
+        return false;
+    }
   }
 
   private incrementEntered(blockId: string): void {
