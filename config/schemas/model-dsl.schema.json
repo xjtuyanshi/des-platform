@@ -1074,6 +1074,17 @@
                 },
                 "default": {}
               },
+              "sweep": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/AiNativeDesModelDefinition/properties/parameters/items/properties/defaultValue"
+                  },
+                  "minItems": 1
+                },
+                "default": {}
+              },
               "stopTimeSec": {
                 "type": "number",
                 "exclusiveMinimum": 0

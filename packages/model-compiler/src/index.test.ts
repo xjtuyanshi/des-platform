@@ -1,4 +1,4 @@
-import { analyzeDesModel, compileDesModel, runDesModel, runDesModelReplicationsToResult, runDesModelToResult } from './index.js';
+import { analyzeDesModel, compileDesModel, runDesModel, runDesModelReplicationsToResult, runDesModelSweepToResult, runDesModelToResult } from './index.js';
 
 describe('model compiler', () => {
   it('validates and runs an AI-native process model DSL', () => {
@@ -204,6 +204,68 @@ describe('model compiler', () => {
     expect(report.metricStats.completedEntities.mean).toBe(4);
     expect(report.metricStats.averageCycleTimeSec.halfWidth95).toBeGreaterThan(0);
     expect(JSON.parse(JSON.stringify(report)).modelId).toBe('replications');
+  });
+
+  it('builds parameter sweep reports across all parameter combinations', () => {
+    const report = runDesModelSweepToResult({
+      schemaVersion: 'des-platform.v1',
+      id: 'sweep',
+      name: 'Sweep',
+      parameters: [
+        {
+          id: 'interarrival',
+          path: '/process/blocks/source/intervalSec',
+          valueType: 'number',
+          defaultValue: 1,
+          min: 1,
+          max: 3
+        },
+        {
+          id: 'service-time',
+          path: '/process/blocks/service/durationSec',
+          valueType: 'number',
+          defaultValue: 2,
+          min: 2,
+          max: 4
+        }
+      ],
+      process: {
+        id: 'flow',
+        resourcePools: [{ id: 'server', capacity: 1 }],
+        blocks: [
+          { id: 'source', kind: 'source', intervalSec: 1, maxArrivals: 3 },
+          { id: 'service', kind: 'service', resourcePoolId: 'server', durationSec: 2 },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [
+          { from: 'source', to: 'service' },
+          { from: 'service', to: 'sink' }
+        ]
+      },
+      experiments: [{
+        id: 'grid',
+        seed: 7,
+        replications: 2,
+        stopTimeSec: 30,
+        sweep: {
+          interarrival: [1, 3],
+          'service-time': [2, 4]
+        }
+      }]
+    }, 'grid');
+
+    expect(report.schemaVersion).toBe('des-platform.sweep.v1');
+    expect(report.sweepParameters).toEqual(['interarrival', 'service-time']);
+    expect(report.caseCount).toBe(4);
+    expect(report.cases.map((candidate) => candidate.parameterValues)).toEqual([
+      { interarrival: 1, 'service-time': 2 },
+      { interarrival: 1, 'service-time': 4 },
+      { interarrival: 3, 'service-time': 2 },
+      { interarrival: 3, 'service-time': 4 }
+    ]);
+    expect(report.cases.every((candidate) => candidate.replicationSummaries.length === 2)).toBe(true);
+    expect(report.cases[0]?.metricStats.averageCycleTimeSec.mean).toBeLessThan(report.cases[1]?.metricStats.averageCycleTimeSec.mean ?? 0);
+    expect(JSON.parse(JSON.stringify(report)).caseCount).toBe(4);
   });
 
   it('rejects invalid graph references before runtime', () => {

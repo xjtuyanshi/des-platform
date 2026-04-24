@@ -203,13 +203,20 @@ describe('shared schema', () => {
           { from: 'delay', to: 'sink' }
         ]
       },
-      experiments: [{ id: 'baseline', seed: 1234, parameterOverrides: { 'arrival-mean-sec': 8 }, stopTimeSec: 100 }]
+      experiments: [{
+        id: 'baseline',
+        seed: 1234,
+        parameterOverrides: { 'arrival-mean-sec': 8 },
+        sweep: { 'arrival-mean-sec': [5, 8, 12] },
+        stopTimeSec: 100
+      }]
     });
 
     expect(model.experiments[0]?.seed).toBe(1234);
     expect(model.experiments[0]?.replications).toBe(1);
     expect(model.experiments[0]?.seedStride).toBe(1);
     expect(model.experiments[0]?.parameterOverrides['arrival-mean-sec']).toBe(8);
+    expect(model.experiments[0]?.sweep['arrival-mean-sec']).toEqual([5, 8, 12]);
     expect(model.process.blocks[1]?.kind).toBe('delay');
     expect(() =>
       AiNativeDesModelDefinitionSchema.parse({

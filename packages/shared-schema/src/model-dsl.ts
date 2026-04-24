@@ -526,6 +526,7 @@ export const ExperimentDefinitionSchema = z.object({
   replications: z.number().int().positive().default(1),
   seedStride: z.number().int().positive().default(1),
   parameterOverrides: z.record(DslLiteralSchema).default({}),
+  sweep: z.record(z.array(DslLiteralSchema).min(1)).default({}),
   stopTimeSec: z.number().positive(),
   warmupSec: z.number().nonnegative().default(0),
   maxEvents: z.number().int().positive().default(100_000)
@@ -566,6 +567,22 @@ export const AiNativeDesModelDefinitionSchema = z.object({
         continue;
       }
       addParameterValueIssues(parameter, value, ['experiments', experiment.id, 'parameterOverrides', parameterId], context);
+    }
+
+    for (const [parameterId, values] of Object.entries(experiment.sweep)) {
+      const parameter = model.parameters.find((candidate) => candidate.id === parameterId);
+      if (!parameter) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['experiments', experiment.id, 'sweep', parameterId],
+          message: `Experiment ${experiment.id} sweeps unknown parameter ${parameterId}`
+        });
+        continue;
+      }
+
+      for (const [valueIndex, value] of values.entries()) {
+        addParameterValueIssues(parameter, value, ['experiments', experiment.id, 'sweep', parameterId, valueIndex], context);
+      }
     }
   }
 

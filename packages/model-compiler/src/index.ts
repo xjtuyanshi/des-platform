@@ -90,6 +90,29 @@ export type GenericDesExperimentResult = {
   replicationSummaries: GenericReplicationSummary[];
 };
 
+export type GenericSweepCaseResult = {
+  caseIndex: number;
+  parameterValues: Record<string, DslLiteral>;
+  metricStats: Record<string, GenericMetricStats>;
+  replicationSummaries: GenericReplicationSummary[];
+};
+
+export type GenericDesSweepResult = {
+  schemaVersion: 'des-platform.sweep.v1';
+  modelId: string;
+  modelName: string;
+  experimentId: string;
+  experimentName: string | null;
+  baseSeed: number;
+  seedStride: number;
+  replications: number;
+  stopTimeSec: number;
+  warmupSec: number;
+  sweepParameters: string[];
+  caseCount: number;
+  cases: GenericSweepCaseResult[];
+};
+
 export type ModelDiagnosticSeverity = 'error' | 'warning';
 
 export type ModelDiagnostic = {
@@ -114,6 +137,7 @@ export type CompiledDesModel = {
   runExperiment: (experimentId?: string) => ProcessFlowRunResult;
   runExperimentToResult: (experimentId?: string) => GenericDesRunResult;
   runReplicationsToResult: (experimentId?: string) => GenericDesExperimentResult;
+  runSweepToResult: (experimentId?: string) => GenericDesSweepResult;
 };
 
 export function analyzeDesModel(input: unknown): ModelDiagnosticsReport {
@@ -157,7 +181,9 @@ export function compileDesModel(input: unknown): CompiledDesModel {
       return runSingleExperimentToResult(model, experiment, experiment.seed);
     },
     runReplicationsToResult: (experimentId?: string) =>
-      runReplicationsForModel(model, resolveExperiment(model, experimentId))
+      runReplicationsForModel(model, resolveExperiment(model, experimentId)),
+    runSweepToResult: (experimentId?: string) =>
+      runSweepForModel(model, resolveExperiment(model, experimentId))
   };
 }
 
@@ -171,6 +197,10 @@ export function runDesModelToResult(input: unknown, experimentId?: string): Gene
 
 export function runDesModelReplicationsToResult(input: unknown, experimentId?: string): GenericDesExperimentResult {
   return compileDesModel(input).runReplicationsToResult(experimentId);
+}
+
+export function runDesModelSweepToResult(input: unknown, experimentId?: string): GenericDesSweepResult {
+  return compileDesModel(input).runSweepToResult(experimentId);
 }
 
 function resolveExperiment(model: AiNativeDesModelDefinition, experimentId?: string): ExperimentDefinition {
@@ -301,6 +331,67 @@ function runReplicationsForModel(
     metricStats: buildMetricStats(replicationSummaries),
     replicationSummaries
   };
+}
+
+function runSweepForModel(
+  model: AiNativeDesModelDefinition,
+  experiment: ExperimentDefinition
+): GenericDesSweepResult {
+  const sweepParameters = Object.keys(experiment.sweep);
+  const cases = buildSweepExperiments(experiment).map((sweepExperiment, index) => {
+    const replicationReport = runReplicationsForModel(model, sweepExperiment);
+    return {
+      caseIndex: index + 1,
+      parameterValues: replicationReport.parameterValues,
+      metricStats: replicationReport.metricStats,
+      replicationSummaries: replicationReport.replicationSummaries
+    };
+  });
+
+  return {
+    schemaVersion: 'des-platform.sweep.v1',
+    modelId: model.id,
+    modelName: model.name,
+    experimentId: experiment.id,
+    experimentName: experiment.name ?? null,
+    baseSeed: experiment.seed,
+    seedStride: experiment.seedStride,
+    replications: experiment.replications,
+    stopTimeSec: experiment.stopTimeSec,
+    warmupSec: experiment.warmupSec,
+    sweepParameters,
+    caseCount: cases.length,
+    cases
+  };
+}
+
+function buildSweepExperiments(experiment: ExperimentDefinition): ExperimentDefinition[] {
+  const entries = Object.entries(experiment.sweep);
+  if (entries.length === 0) {
+    return [experiment];
+  }
+
+  const cases: Array<Record<string, DslLiteral>> = [{}];
+  for (const [parameterId, values] of entries) {
+    const nextCases: Array<Record<string, DslLiteral>> = [];
+    for (const currentCase of cases) {
+      for (const value of values) {
+        nextCases.push({
+          ...currentCase,
+          [parameterId]: value
+        });
+      }
+    }
+    cases.splice(0, cases.length, ...nextCases);
+  }
+
+  return cases.map((caseOverrides) => ({
+    ...experiment,
+    parameterOverrides: {
+      ...experiment.parameterOverrides,
+      ...caseOverrides
+    }
+  }));
 }
 
 function materializeModelForExperiment(
@@ -571,6 +662,9 @@ function analyzeParameterSemantics(model: AiNativeDesModelDefinition): ModelDiag
   for (const experiment of model.experiments) {
     try {
       materializeModelForExperiment(model, experiment);
+      for (const sweepExperiment of buildSweepExperiments(experiment)) {
+        materializeModelForExperiment(model, sweepExperiment);
+      }
     } catch (materializeError) {
       diagnostics.push(error(
         'parameter.override-invalid',

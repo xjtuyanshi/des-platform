@@ -96,6 +96,17 @@
         "service-mode-sec": 120
       },
       "stopTimeSec": 3600
+    },
+    {
+      "id": "arrival-service-sweep",
+      "seed": 20260430,
+      "replications": 4,
+      "seedStride": 1,
+      "sweep": {
+        "arrival-mean-sec": [60, 90, 120],
+        "service-mode-sec": [80, 120]
+      },
+      "stopTimeSec": 3600
     }
   ]
 }

@@ -65,6 +65,7 @@ pnpm typecheck
 pnpm test
 pnpm run:model
 pnpm run:experiment
+pnpm run:sweep
 pnpm validate:model
 pnpm dev:api
 pnpm dev:viewer
@@ -97,6 +98,7 @@ pnpm run:model
 pnpm run:model config/models/warehouse-material-flow.json baseline
 pnpm run:model config/models/stochastic-single-machine.json seed-20260424
 pnpm run:experiment config/models/stochastic-single-machine.json seed-20260424
+pnpm run:sweep config/models/stochastic-single-machine.json arrival-service-sweep
 ```
 
 Validation writes `output/<model-file>-diagnostics.json` with schema, process graph, material route, and experiment diagnostics. This is the first guardrail for AI-authored models: an agent can generate a model, validate it, repair specific diagnostic codes, and only then run the simulation.
@@ -104,6 +106,7 @@ Validation writes `output/<model-file>-diagnostics.json` with schema, process gr
 The runner writes serializable results to `output/<model-id>-<experiment-id>-run.json` with event logs, process snapshots, material-handling state, and summary KPIs.
 Experiment runs write `output/<model-id>-<experiment-id>-experiment.json` with per-replication seeds, KPI summaries, standard deviations, and 95% confidence half-widths.
 Parameterized runs apply `experiment.parameterOverrides` before compilation and include the effective `parameterValues` in run and experiment outputs.
+Sweep runs write `output/<model-id>-<experiment-id>-sweep.json` with one experiment report per parameter combination, using the same seed sequence across cases for cleaner comparisons.
 
 Viewer defaults:
 

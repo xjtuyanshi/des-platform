@@ -6,6 +6,7 @@
   "scripts": {
     "run": "tsx src/cli.ts",
     "experiment": "tsx src/cli.ts --experiment",
+    "sweep": "tsx src/cli.ts --sweep",
     "validate": "tsx src/cli.ts --validate",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
