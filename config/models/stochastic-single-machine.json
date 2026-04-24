@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "des-platform.v1",
+  "id": "stochastic-single-machine",
+  "name": "Stochastic Single Machine",
+  "description": "Generic DES model using seeded stochastic arrivals and triangular service times.",
+  "process": {
+    "id": "stochastic-single-machine-flow",
+    "resourcePools": [
+      {
+        "id": "machine",
+        "capacity": 1
+      }
+    ],
+    "blocks": [
+      {
+        "id": "source",
+        "kind": "source",
+        "entityType": "job",
+        "startAtSec": 0,
+        "intervalSec": {
+          "kind": "exponential",
+          "mean": 90
+        },
+        "maxArrivals": 20
+      },
+      {
+        "id": "service",
+        "kind": "service",
+        "resourcePoolId": "machine",
+        "durationSec": {
+          "kind": "triangular",
+          "min": 60,
+          "mode": 100,
+          "max": 180
+        }
+      },
+      {
+        "id": "sink",
+        "kind": "sink"
+      }
+    ],
+    "connections": [
+      {
+        "from": "source",
+        "to": "service"
+      },
+      {
+        "from": "service",
+        "to": "sink"
+      }
+    ]
+  },
+  "experiments": [
+    {
+      "id": "seed-20260424",
+      "seed": 20260424,
+      "stopTimeSec": 3600
+    },
+    {
+      "id": "seed-20260425",
+      "seed": 20260425,
+      "stopTimeSec": 3600
+    }
+  ]
+}

@@ -2,6 +2,84 @@ import { z } from 'zod';
 
 export const DslLiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
+const RawTimeDistributionDefinitionSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('constant'),
+    value: z.number().nonnegative()
+  }),
+  z.object({
+    kind: z.literal('uniform'),
+    min: z.number().nonnegative(),
+    max: z.number().nonnegative()
+  }),
+  z.object({
+    kind: z.literal('triangular'),
+    min: z.number().nonnegative(),
+    mode: z.number().nonnegative(),
+    max: z.number().nonnegative()
+  }),
+  z.object({
+    kind: z.literal('normal'),
+    mean: z.number().nonnegative(),
+    sd: z.number().positive(),
+    min: z.number().nonnegative().default(0),
+    max: z.number().nonnegative().optional()
+  }),
+  z.object({
+    kind: z.literal('exponential'),
+    mean: z.number().positive()
+  })
+]);
+
+export const TimeDistributionDefinitionSchema = RawTimeDistributionDefinitionSchema.superRefine((distribution, context) => {
+  if ((distribution.kind === 'uniform' || distribution.kind === 'triangular') && distribution.max < distribution.min) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['max'],
+      message: `${distribution.kind} distribution max must be greater than or equal to min`
+    });
+  }
+
+  if (distribution.kind === 'triangular' && (distribution.mode < distribution.min || distribution.mode > distribution.max)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['mode'],
+      message: 'Triangular distribution mode must be between min and max'
+    });
+  }
+
+  if (distribution.kind === 'normal' && distribution.max !== undefined && distribution.max < distribution.min) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['max'],
+      message: 'Normal distribution max must be greater than or equal to min'
+    });
+  }
+});
+
+export const TimeValueDefinitionSchema = z.union([z.number().nonnegative(), TimeDistributionDefinitionSchema]);
+
+function timeValueCanAdvance(value: z.infer<typeof TimeValueDefinitionSchema>): boolean {
+  if (typeof value === 'number') {
+    return value > 0;
+  }
+
+  switch (value.kind) {
+    case 'constant':
+      return value.value > 0;
+    case 'uniform':
+    case 'triangular':
+      return value.max > 0;
+    case 'normal':
+      return value.max === undefined || value.max > 0;
+    case 'exponential':
+      return true;
+    default:
+      value satisfies never;
+      return false;
+  }
+}
+
 export const EntityConditionSchema = z.object({
   attribute: z.string(),
   operator: z.enum(['equals', 'not-equals']).default('equals'),
@@ -188,7 +266,7 @@ export const SourceBlockDefinitionSchema = BlockBaseSchema.extend({
   kind: z.literal('source'),
   entityType: z.string().default('entity'),
   startAtSec: z.number().nonnegative().default(0),
-  intervalSec: z.number().positive().optional(),
+  intervalSec: TimeValueDefinitionSchema.optional(),
   scheduleAtSec: z.array(z.number().nonnegative()).optional(),
   maxArrivals: z.number().int().positive().optional(),
   attributes: z.record(DslLiteralSchema).default({})
@@ -202,14 +280,14 @@ export const QueueBlockDefinitionSchema = BlockBaseSchema.extend({
 
 export const DelayBlockDefinitionSchema = BlockBaseSchema.extend({
   kind: z.literal('delay'),
-  durationSec: z.number().nonnegative()
+  durationSec: TimeValueDefinitionSchema
 });
 
 export const ServiceBlockDefinitionSchema = BlockBaseSchema.extend({
   kind: z.literal('service'),
   resourcePoolId: z.string(),
   quantity: z.number().int().positive().default(1),
-  durationSec: z.number().nonnegative(),
+  durationSec: TimeValueDefinitionSchema,
   queueCapacity: z.number().int().positive().optional()
 });
 
@@ -239,8 +317,8 @@ export const MoveByTransporterBlockDefinitionSchema = BlockBaseSchema.extend({
   fleetId: z.string(),
   fromNodeId: z.string(),
   toNodeId: z.string(),
-  loadTimeSec: z.number().nonnegative().default(0),
-  unloadTimeSec: z.number().nonnegative().default(0)
+  loadTimeSec: TimeValueDefinitionSchema.default(0),
+  unloadTimeSec: TimeValueDefinitionSchema.default(0)
 });
 
 export const StoreBlockDefinitionSchema = BlockBaseSchema.extend({
@@ -299,12 +377,22 @@ export const ProcessFlowDefinitionSchema = z.object({
     }
     blockIds.add(block.id);
 
-    if (block.kind === 'source' && !block.intervalSec && (!block.scheduleAtSec || block.scheduleAtSec.length === 0)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['blocks', block.id],
-        message: `Source ${block.id} must define intervalSec or scheduleAtSec`
-      });
+    if (block.kind === 'source') {
+      if (block.intervalSec === undefined && (!block.scheduleAtSec || block.scheduleAtSec.length === 0)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['blocks', block.id],
+          message: `Source ${block.id} must define intervalSec or scheduleAtSec`
+        });
+      }
+
+      if (block.intervalSec !== undefined && !timeValueCanAdvance(block.intervalSec)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['blocks', block.id, 'intervalSec'],
+          message: `Source ${block.id} intervalSec must be able to advance simulation time`
+        });
+      }
     }
   }
 
@@ -350,6 +438,7 @@ export const ProcessFlowDefinitionSchema = z.object({
 export const ExperimentDefinitionSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
+  seed: z.number().int().nonnegative().default(1),
   stopTimeSec: z.number().positive(),
   warmupSec: z.number().nonnegative().default(0),
   maxEvents: z.number().int().positive().default(100_000)
@@ -431,6 +520,8 @@ export const AiNativeDesModelDefinitionSchema = z.object({
 });
 
 export type DslLiteral = z.infer<typeof DslLiteralSchema>;
+export type TimeDistributionDefinition = z.infer<typeof TimeDistributionDefinitionSchema>;
+export type TimeValueDefinition = z.infer<typeof TimeValueDefinitionSchema>;
 export type EntityConditionDefinition = z.infer<typeof EntityConditionSchema>;
 export type ResourcePoolDefinition = z.infer<typeof ResourcePoolDefinitionSchema>;
 export type MaterialNodeDefinition = z.infer<typeof MaterialNodeDefinitionSchema>;

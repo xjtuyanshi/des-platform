@@ -68,8 +68,135 @@
                     "default": 0
                   },
                   "intervalSec": {
-                    "type": "number",
-                    "exclusiveMinimum": 0
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "constant"
+                              },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "uniform"
+                              },
+                              "min": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "max": {
+                                "type": "number",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "min",
+                              "max"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "triangular"
+                              },
+                              "min": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "mode": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "max": {
+                                "type": "number",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "min",
+                              "mode",
+                              "max"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "normal"
+                              },
+                              "mean": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "sd": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              },
+                              "min": {
+                                "type": "number",
+                                "minimum": 0,
+                                "default": 0
+                              },
+                              "max": {
+                                "type": "number",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "mean",
+                              "sd"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "exponential"
+                              },
+                              "mean": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "mean"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    ]
                   },
                   "scheduleAtSec": {
                     "type": "array",
@@ -153,8 +280,7 @@
                     "const": "delay"
                   },
                   "durationSec": {
-                    "type": "number",
-                    "minimum": 0
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/intervalSec"
                   }
                 },
                 "required": [
@@ -189,8 +315,7 @@
                     "default": 1
                   },
                   "durationSec": {
-                    "type": "number",
-                    "minimum": 0
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/intervalSec"
                   },
                   "queueCapacity": {
                     "type": "integer",
@@ -345,13 +470,11 @@
                     "type": "string"
                   },
                   "loadTimeSec": {
-                    "type": "number",
-                    "minimum": 0,
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/intervalSec",
                     "default": 0
                   },
                   "unloadTimeSec": {
-                    "type": "number",
-                    "minimum": 0,
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/intervalSec",
                     "default": 0
                   }
                 },

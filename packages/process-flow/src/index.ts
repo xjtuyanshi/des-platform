@@ -6,8 +6,11 @@ import {
   type ProcessConnectionDefinition,
   type ProcessFlowBlockDefinition,
   type ProcessFlowDefinition,
-  type ResourcePoolDefinition
+  type ResourcePoolDefinition,
+  type TimeValueDefinition
 } from '@des-platform/shared-schema/model-dsl';
+
+import { createSeededRandom, sampleTimeSec, type RandomSource } from './stochastic.js';
 
 const SOURCE_CREATE_EVENT = 'process.source.create';
 const ENTITY_ENTER_EVENT = 'process.entity.enter';
@@ -157,7 +160,11 @@ export class ProcessFlowRuntime {
   private readonly transporterWaits = new Map<string, TransporterMoveRequest[]>();
   private attached = false;
 
-  constructor(definition: ProcessFlowDefinition, private readonly materialHandling: MaterialHandlingRuntime | null = null) {
+  constructor(
+    definition: ProcessFlowDefinition,
+    private readonly materialHandling: MaterialHandlingRuntime | null = null,
+    private readonly random: RandomSource = createSeededRandom()
+  ) {
     this.definition = ProcessFlowDefinitionSchema.parse(definition);
 
     for (const block of this.definition.blocks) {
@@ -280,7 +287,7 @@ export class ProcessFlowRuntime {
     this.routeFromBlock(sim, block.id, entity);
 
     if (block.intervalSec && (!block.maxArrivals || createdCount < block.maxArrivals)) {
-      this.scheduleSourceCreate(sim, block.id, sim.nowSec + block.intervalSec);
+      this.scheduleSourceCreate(sim, block.id, sim.nowSec + this.sampleTime(block.intervalSec, `${block.id}.intervalSec`));
     }
   }
 
@@ -300,7 +307,7 @@ export class ProcessFlowRuntime {
       case 'delay':
         sim.scheduleIn(
           ENTITY_ENTER_EVENT,
-          block.durationSec,
+          this.sampleTime(block.durationSec, `${block.id}.durationSec`),
           { entityId: entity.id, blockId: this.requireNextConnection(block.id, entity).to },
           { priority: 50 }
         );
@@ -313,7 +320,7 @@ export class ProcessFlowRuntime {
           resourcePoolId: block.resourcePoolId,
           quantity: block.quantity,
           mode: 'service',
-          durationSec: block.durationSec,
+          durationSec: this.sampleTime(block.durationSec, `${block.id}.durationSec`),
           queuedAtSec: sim.nowSec
         }, block.queueCapacity);
         break;
@@ -344,8 +351,8 @@ export class ProcessFlowRuntime {
           fleetId: block.fleetId,
           fromNodeId: block.fromNodeId,
           toNodeId: block.toNodeId,
-          loadTimeSec: block.loadTimeSec,
-          unloadTimeSec: block.unloadTimeSec,
+          loadTimeSec: this.sampleTime(block.loadTimeSec, `${block.id}.loadTimeSec`),
+          unloadTimeSec: this.sampleTime(block.unloadTimeSec, `${block.id}.unloadTimeSec`),
           queuedAtSec: sim.nowSec
         });
         break;
@@ -635,15 +642,21 @@ export class ProcessFlowRuntime {
   private itemIdFor(entity: ProcessEntity, itemIdAttribute?: string): string {
     return valueAsItemId(itemIdAttribute ? entity.attributes[itemIdAttribute] : undefined, entity.id);
   }
+
+  private sampleTime(definition: TimeValueDefinition, context: string): number {
+    return sampleTimeSec(definition, this.random, context);
+  }
 }
 
 export type ProcessFlowRuntimeOptions = {
   materialHandling?: MaterialHandlingRuntime | null;
+  seed?: number;
+  random?: RandomSource;
 };
 
 export function createProcessFlowSimulation(definition: ProcessFlowDefinition, options: ProcessFlowRuntimeOptions = {}): ProcessFlowRunResult {
   const simulation = new DesSimulation<ProcessRuntimeState>({});
-  const runtime = new ProcessFlowRuntime(definition, options.materialHandling ?? null);
+  const runtime = new ProcessFlowRuntime(definition, options.materialHandling ?? null, options.random ?? createSeededRandom(options.seed));
   runtime.attach(simulation);
   return {
     simulation,

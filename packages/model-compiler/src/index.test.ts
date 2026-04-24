@@ -137,6 +137,7 @@ describe('model compiler', () => {
     expect(result.summary.completedEntities).toBe(2);
     expect(result.summary.averageCycleTimeSec).toBe(4.5);
     expect(result.summary.stoppedBy).toBe('empty');
+    expect(result.seed).toBe(1);
     expect(JSON.parse(JSON.stringify(result)).modelId).toBe('serializable');
   });
 

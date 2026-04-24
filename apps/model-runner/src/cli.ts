@@ -56,6 +56,7 @@ async function runModel(positionalArgs: string[]): Promise<void> {
 
   console.log(`model=${result.modelId}`);
   console.log(`experiment=${result.experimentId}`);
+  console.log(`seed=${result.seed}`);
   console.log(`createdEntities=${result.summary.createdEntities}`);
   console.log(`completedEntities=${result.summary.completedEntities}`);
   console.log(`averageCycleTimeSec=${result.summary.averageCycleTimeSec.toFixed(4)}`);

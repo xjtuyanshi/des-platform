@@ -48,6 +48,48 @@ describe('ProcessFlowRuntime', () => {
     expect(result.snapshot.resourcePools[0]?.maxQueueLength).toBe(2);
   });
 
+  it('samples stochastic interarrival and service times reproducibly by seed', () => {
+    const flow: ProcessFlowDefinition = {
+      id: 'stochastic-single-machine',
+      resourcePools: [{ id: 'machine', capacity: 1 }],
+      blocks: [
+        {
+          id: 'source',
+          kind: 'source',
+          entityType: 'job',
+          startAtSec: 0,
+          intervalSec: { kind: 'uniform', min: 1, max: 3 },
+          maxArrivals: 5,
+          attributes: {}
+        },
+        {
+          id: 'service',
+          kind: 'service',
+          resourcePoolId: 'machine',
+          quantity: 1,
+          durationSec: { kind: 'triangular', min: 2, mode: 4, max: 8 }
+        },
+        { id: 'sink', kind: 'sink' }
+      ],
+      connections: [
+        { from: 'source', to: 'service' },
+        { from: 'service', to: 'sink' }
+      ]
+    };
+
+    const resultA = runProcessFlow(flow, 100, undefined, { seed: 42 });
+    const resultB = runProcessFlow(flow, 100, undefined, { seed: 42 });
+    const resultC = runProcessFlow(flow, 100, undefined, { seed: 43 });
+
+    const completedA = resultA.snapshot.entities.map((entity) => entity.completedAtSec);
+    const completedB = resultB.snapshot.entities.map((entity) => entity.completedAtSec);
+    const completedC = resultC.snapshot.entities.map((entity) => entity.completedAtSec);
+
+    expect(resultA.snapshot.completedEntities).toBe(5);
+    expect(completedA).toEqual(completedB);
+    expect(completedA).not.toEqual(completedC);
+  });
+
   it('supports explicit seize and release blocks for held resources', () => {
     const flow: ProcessFlowDefinition = {
       id: 'held-operator',

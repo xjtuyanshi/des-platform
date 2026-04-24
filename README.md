@@ -79,6 +79,7 @@ It is intentionally code/data based instead of drag-and-drop based:
 
 - AI or a user describes a process as blocks, resource pools, and connections.
 - AI or a user describes a facility as nodes, paths, fleets, storage systems, conveyors, zones, and obstacles.
+- Time fields can be deterministic numbers or seeded distributions such as `constant`, `uniform`, `triangular`, `normal`, and `exponential`.
 - `@des-platform/model-compiler` validates the DSL before runtime.
 - `@des-platform/process-flow` executes the model on `@des-platform/des-core`.
 - `@des-platform/material-handling` provides the first generic material-flow runtime layer for `MoveByTransporter`, `Store`, `Retrieve`, and `Convey` blocks.
@@ -89,8 +90,10 @@ Generic models can be run without the viewer:
 ```bash
 pnpm validate:model
 pnpm validate:model config/models/warehouse-material-flow.json
+pnpm validate:model config/models/stochastic-single-machine.json
 pnpm run:model
 pnpm run:model config/models/warehouse-material-flow.json baseline
+pnpm run:model config/models/stochastic-single-machine.json seed-20260424
 ```
 
 Validation writes `output/<model-file>-diagnostics.json` with schema, process graph, material route, and experiment diagnostics. This is the first guardrail for AI-authored models: an agent can generate a model, validate it, repair specific diagnostic codes, and only then run the simulation.

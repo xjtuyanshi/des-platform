@@ -37,6 +37,7 @@ export type GenericDesRunResult = {
   modelName: string;
   experimentId: string;
   experimentName: string | null;
+  seed: number;
   stopTimeSec: number;
   warmupSec: number;
   nowSec: number;
@@ -92,20 +93,23 @@ export function compileDesModel(input: unknown): CompiledDesModel {
     defaultExperiment,
     createRuntime: () =>
       createProcessFlowSimulation(model.process, {
-        materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null
+        materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
+        seed: defaultExperiment?.seed
       }),
     createMaterialHandlingRuntime: () =>
       model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
     runExperiment: (experimentId?: string) => {
       const experiment = resolveExperiment(model, experimentId);
       return runProcessFlow(model.process, experiment.stopTimeSec, experiment.maxEvents, {
-        materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null
+        materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
+        seed: experiment.seed
       });
     },
     runExperimentToResult: (experimentId?: string) => {
       const experiment = resolveExperiment(model, experimentId);
       const run = runProcessFlow(model.process, experiment.stopTimeSec, experiment.maxEvents, {
-        materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null
+        materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
+        seed: experiment.seed
       });
       return buildGenericRunResult(model, experiment, run);
     }
@@ -168,6 +172,7 @@ function buildGenericRunResult(
     modelName: model.name,
     experimentId: experiment.id,
     experimentName: experiment.name ?? null,
+    seed: experiment.seed,
     stopTimeSec: experiment.stopTimeSec,
     warmupSec: experiment.warmupSec,
     nowSec: run.snapshot.nowSec,

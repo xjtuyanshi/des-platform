@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { listScenarioBundles, loadScenarioBundle } from './loader.js';
-import { ScenarioDefinitionSchema, WorldSnapshotSchema, createLinearAssemblyLayout } from './index.js';
+import { AiNativeDesModelDefinitionSchema, ScenarioDefinitionSchema, WorldSnapshotSchema, createLinearAssemblyLayout } from './index.js';
 
 describe('shared schema', () => {
   it('validates the baseline scenario bundle and a sample snapshot', async () => {
@@ -174,5 +174,42 @@ describe('shared schema', () => {
         }
       })
     ).toThrow(/must match line\.stationCount/);
+  });
+
+  it('validates AI-native stochastic time distributions', () => {
+    const model = AiNativeDesModelDefinitionSchema.parse({
+      schemaVersion: 'des-platform.v1',
+      id: 'stochastic-smoke',
+      name: 'Stochastic Smoke',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', intervalSec: { kind: 'exponential', mean: 5 } },
+          { id: 'delay', kind: 'delay', durationSec: { kind: 'normal', mean: 10, sd: 2, min: 1, max: 20 } },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [
+          { from: 'source', to: 'delay' },
+          { from: 'delay', to: 'sink' }
+        ]
+      },
+      experiments: [{ id: 'baseline', seed: 1234, stopTimeSec: 100 }]
+    });
+
+    expect(model.experiments[0]?.seed).toBe(1234);
+    expect(model.process.blocks[1]?.kind).toBe('delay');
+    expect(() =>
+      AiNativeDesModelDefinitionSchema.parse({
+        ...model,
+        process: {
+          ...model.process,
+          blocks: [
+            { id: 'source', kind: 'source', intervalSec: { kind: 'constant', value: 0 } },
+            { id: 'sink', kind: 'sink' }
+          ],
+          connections: [{ from: 'source', to: 'sink' }]
+        }
+      })
+    ).toThrow(/intervalSec must be able to advance simulation time/);
   });
 });
