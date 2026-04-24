@@ -77,7 +77,7 @@ It is intentionally code/data based instead of drag-and-drop based:
 - AI or a user describes a facility as nodes, paths, fleets, storage systems, conveyors, zones, and obstacles.
 - `@des-platform/model-compiler` validates the DSL before runtime.
 - `@des-platform/process-flow` executes the model on `@des-platform/des-core`.
-- `@des-platform/material-handling` provides the first generic material-flow runtime layer.
+- `@des-platform/material-handling` provides the first generic material-flow runtime layer for `MoveByTransporter`, `Store`, `Retrieve`, and `Convey` blocks.
 - Generated JSON Schemas include `process-flow.schema.json`, `material-handling.schema.json`, and `model-dsl.schema.json`.
 
 Viewer defaults:

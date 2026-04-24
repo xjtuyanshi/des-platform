@@ -318,6 +318,138 @@
                   "kind"
                 ],
                 "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "moveByTransporter"
+                  },
+                  "fleetId": {
+                    "type": "string"
+                  },
+                  "fromNodeId": {
+                    "type": "string"
+                  },
+                  "toNodeId": {
+                    "type": "string"
+                  },
+                  "loadTimeSec": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 0
+                  },
+                  "unloadTimeSec": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 0
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "fleetId",
+                  "fromNodeId",
+                  "toNodeId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "store"
+                  },
+                  "storageId": {
+                    "type": "string"
+                  },
+                  "itemIdAttribute": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "storageId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "retrieve"
+                  },
+                  "storageId": {
+                    "type": "string"
+                  },
+                  "itemIdAttribute": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "storageId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "convey"
+                  },
+                  "conveyorId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "conveyorId"
+                ],
+                "additionalProperties": false
               }
             ]
           },

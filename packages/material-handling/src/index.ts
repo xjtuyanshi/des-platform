@@ -199,6 +199,10 @@ export class MaterialHandlingRuntime {
     return conveyor.lengthM / conveyor.speedMps;
   }
 
+  getConveyor(conveyorId: string): ConveyorDefinition {
+    return { ...this.requireConveyor(conveyorId) };
+  }
+
   private addEdge(path: MaterialPathDefinition, from: string, to: string): void {
     const fromNode = this.requireNode(from);
     const toNode = this.requireNode(to);

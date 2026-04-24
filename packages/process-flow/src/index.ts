@@ -1,4 +1,5 @@
 import { DesSimulation, type DesEventPayload } from '@des-platform/des-core';
+import type { MaterialHandlingRuntime, MaterialHandlingSnapshot, TransporterUnitState } from '@des-platform/material-handling';
 import {
   ProcessFlowDefinitionSchema,
   type DslLiteral,
@@ -11,6 +12,7 @@ import {
 const SOURCE_CREATE_EVENT = 'process.source.create';
 const ENTITY_ENTER_EVENT = 'process.entity.enter';
 const SERVICE_COMPLETE_EVENT = 'process.service.complete';
+const TRANSPORT_COMPLETE_EVENT = 'process.material.transport.complete';
 
 export type ProcessEntity = {
   id: string;
@@ -49,12 +51,25 @@ export type RuntimeResourcePoolState = {
   maxQueueLength: number;
 };
 
+export type TransporterMoveRequest = {
+  entityId: string;
+  blockId: string;
+  fleetId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  loadTimeSec: number;
+  unloadTimeSec: number;
+  queuedAtSec: number;
+};
+
 export type ProcessFlowSnapshot = {
   nowSec: number;
   createdEntities: number;
   completedEntities: number;
   entities: ProcessEntity[];
   resourcePools: RuntimeResourcePoolState[];
+  transporterWaits: TransporterMoveRequest[];
+  materialHandling: MaterialHandlingSnapshot | null;
   blockStats: Record<string, ProcessBlockStats>;
 };
 
@@ -82,6 +97,14 @@ type ServiceCompletePayload = {
   quantity: number;
 };
 
+type TransportCompletePayload = {
+  entityId: string;
+  blockId: string;
+  fleetId: string;
+  transporterUnitId: string;
+  toNodeId: string;
+};
+
 function asSourceCreatePayload(payload: DesEventPayload): SourceCreatePayload {
   return { sourceId: String(payload.sourceId) };
 }
@@ -99,8 +122,26 @@ function asServiceCompletePayload(payload: DesEventPayload): ServiceCompletePayl
   };
 }
 
+function asTransportCompletePayload(payload: DesEventPayload): TransportCompletePayload {
+  return {
+    entityId: String(payload.entityId),
+    blockId: String(payload.blockId),
+    fleetId: String(payload.fleetId),
+    transporterUnitId: String(payload.transporterUnitId),
+    toNodeId: String(payload.toNodeId)
+  };
+}
+
 function cloneAttributes(attributes: Record<string, DslLiteral>): Record<string, DslLiteral> {
   return { ...attributes };
+}
+
+function valueAsItemId(value: DslLiteral | undefined, fallback: string): string {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  return fallback;
 }
 
 export class ProcessFlowRuntime {
@@ -112,9 +153,10 @@ export class ProcessFlowRuntime {
   private readonly entities = new Map<string, ProcessEntity>();
   private readonly completedEntityIds: string[] = [];
   private readonly blockStats = new Map<string, ProcessBlockStats>();
+  private readonly transporterWaits = new Map<string, TransporterMoveRequest[]>();
   private attached = false;
 
-  constructor(definition: ProcessFlowDefinition) {
+  constructor(definition: ProcessFlowDefinition, private readonly materialHandling: MaterialHandlingRuntime | null = null) {
     this.definition = ProcessFlowDefinitionSchema.parse(definition);
 
     for (const block of this.definition.blocks) {
@@ -146,6 +188,7 @@ export class ProcessFlowRuntime {
     sim.on(SOURCE_CREATE_EVENT, ({ sim: runtime, event }) => this.handleSourceCreate(runtime, asSourceCreatePayload(event.payload)));
     sim.on(ENTITY_ENTER_EVENT, ({ sim: runtime, event }) => this.handleEntityEnter(runtime, asEntityEnterPayload(event.payload)));
     sim.on(SERVICE_COMPLETE_EVENT, ({ sim: runtime, event }) => this.handleServiceComplete(runtime, asServiceCompletePayload(event.payload)));
+    sim.on(TRANSPORT_COMPLETE_EVENT, ({ sim: runtime, event }) => this.handleTransportComplete(runtime, asTransportCompletePayload(event.payload)));
     this.scheduleSources(sim);
   }
 
@@ -167,6 +210,8 @@ export class ProcessFlowRuntime {
         waiting: pool.waiting.map((request) => ({ ...request })),
         maxQueueLength: pool.maxQueueLength
       })),
+      transporterWaits: [...this.transporterWaits.values()].flat().map((request) => ({ ...request })),
+      materialHandling: this.materialHandling?.getSnapshot() ?? null,
       blockStats: Object.fromEntries(
         [...this.blockStats.entries()].map(([id, stats]) => [
           id,
@@ -291,6 +336,44 @@ export class ProcessFlowRuntime {
         this.incrementCompleted(block.id);
         this.routeFromBlock(sim, block.id, entity);
         break;
+      case 'moveByTransporter':
+        this.enqueueTransporterMove(sim, {
+          entityId: entity.id,
+          blockId: block.id,
+          fleetId: block.fleetId,
+          fromNodeId: block.fromNodeId,
+          toNodeId: block.toNodeId,
+          loadTimeSec: block.loadTimeSec,
+          unloadTimeSec: block.unloadTimeSec,
+          queuedAtSec: sim.nowSec
+        });
+        break;
+      case 'store':
+        this.requireMaterialHandling(block.id).store(block.storageId, this.itemIdFor(entity, block.itemIdAttribute));
+        entity.attributes.storageId = block.storageId;
+        this.incrementCompleted(block.id);
+        this.routeFromBlock(sim, block.id, entity);
+        break;
+      case 'retrieve':
+        this.requireMaterialHandling(block.id).retrieve(block.storageId, this.itemIdFor(entity, block.itemIdAttribute));
+        entity.attributes.storageId = null;
+        this.incrementCompleted(block.id);
+        this.routeFromBlock(sim, block.id, entity);
+        break;
+      case 'convey': {
+        const materialHandling = this.requireMaterialHandling(block.id);
+        const conveyor = materialHandling.getConveyor(block.conveyorId);
+        entity.attributes.conveyorId = block.conveyorId;
+        entity.attributes.locationNodeId = conveyor.exitNodeId;
+        sim.scheduleIn(
+          ENTITY_ENTER_EVENT,
+          materialHandling.getConveyorTravelTimeSec(block.conveyorId),
+          { entityId: entity.id, blockId: this.requireNextConnection(block.id, entity).to },
+          { priority: 50 }
+        );
+        this.incrementCompleted(block.id);
+        break;
+      }
       case 'sink':
         entity.completedAtSec = sim.nowSec;
         entity.currentBlockId = block.id;
@@ -300,6 +383,18 @@ export class ProcessFlowRuntime {
       default:
         block satisfies never;
     }
+  }
+
+  private handleTransportComplete(sim: DesSimulation<ProcessRuntimeState>, payload: TransportCompletePayload): void {
+    const entity = this.requireEntity(payload.entityId);
+    const materialHandling = this.requireMaterialHandling(payload.blockId);
+    materialHandling.releaseTransporter(payload.transporterUnitId, payload.toNodeId);
+    entity.attributes.locationNodeId = payload.toNodeId;
+    entity.attributes.lastTransporterFleetId = payload.fleetId;
+    entity.attributes.lastTransporterUnitId = payload.transporterUnitId;
+    this.incrementCompleted(payload.blockId);
+    this.tryStartTransporterMoves(sim, payload.fleetId);
+    this.routeFromBlock(sim, payload.blockId, entity);
   }
 
   private handleQueueBlock(sim: DesSimulation<ProcessRuntimeState>, block: Extract<ProcessFlowBlockDefinition, { kind: 'queue' }>, entity: ProcessEntity): void {
@@ -392,6 +487,62 @@ export class ProcessFlowRuntime {
     this.tryStartWaitingRequests(sim, pool);
   }
 
+  private enqueueTransporterMove(sim: DesSimulation<ProcessRuntimeState>, request: TransporterMoveRequest): void {
+    this.requireMaterialHandling(request.blockId);
+    const waits = this.transporterWaits.get(request.fleetId) ?? [];
+    waits.push(request);
+    this.transporterWaits.set(request.fleetId, waits);
+    this.requireStats(request.blockId).maxQueueLength = Math.max(this.requireStats(request.blockId).maxQueueLength, waits.length);
+    this.tryStartTransporterMoves(sim, request.fleetId);
+  }
+
+  private tryStartTransporterMoves(sim: DesSimulation<ProcessRuntimeState>, fleetId: string): void {
+    const materialHandling = this.requireMaterialHandling(`fleet:${fleetId}`);
+    const waits = this.transporterWaits.get(fleetId) ?? [];
+    let index = 0;
+
+    while (index < waits.length) {
+      const request = waits[index]!;
+      const unit = materialHandling.seizeTransporter(fleetId, request.entityId);
+      if (!unit) {
+        break;
+      }
+
+      waits.splice(index, 1);
+      this.scheduleTransportCompletion(sim, request, unit);
+    }
+
+    if (waits.length === 0) {
+      this.transporterWaits.delete(fleetId);
+    }
+  }
+
+  private scheduleTransportCompletion(
+    sim: DesSimulation<ProcessRuntimeState>,
+    request: TransporterMoveRequest,
+    unit: TransporterUnitState
+  ): void {
+    const materialHandling = this.requireMaterialHandling(request.blockId);
+    const route = materialHandling.findShortestRoute(request.fromNodeId, request.toNodeId, request.fleetId);
+    const entity = this.requireEntity(request.entityId);
+    entity.attributes.lastRouteDistanceM = route.distanceM;
+    entity.attributes.lastRouteTravelTimeSec = route.travelTimeSec;
+    entity.attributes.lastRoutePath = route.pathIds.join('>');
+
+    sim.scheduleIn(
+      TRANSPORT_COMPLETE_EVENT,
+      request.loadTimeSec + route.travelTimeSec + request.unloadTimeSec,
+      {
+        entityId: request.entityId,
+        blockId: request.blockId,
+        fleetId: request.fleetId,
+        transporterUnitId: unit.id,
+        toNodeId: request.toNodeId
+      },
+      { priority: 45 }
+    );
+  }
+
   private routeFromBlock(sim: DesSimulation<ProcessRuntimeState>, blockId: string, entity: ProcessEntity): void {
     const next = this.requireNextConnection(blockId, entity);
     sim.scheduleAt(
@@ -471,11 +622,27 @@ export class ProcessFlowRuntime {
     }
     return pool;
   }
+
+  private requireMaterialHandling(blockId: string): MaterialHandlingRuntime {
+    if (!this.materialHandling) {
+      throw new Error(`Block ${blockId} requires a material handling runtime`);
+    }
+
+    return this.materialHandling;
+  }
+
+  private itemIdFor(entity: ProcessEntity, itemIdAttribute?: string): string {
+    return valueAsItemId(itemIdAttribute ? entity.attributes[itemIdAttribute] : undefined, entity.id);
+  }
 }
 
-export function createProcessFlowSimulation(definition: ProcessFlowDefinition): ProcessFlowRunResult {
+export type ProcessFlowRuntimeOptions = {
+  materialHandling?: MaterialHandlingRuntime | null;
+};
+
+export function createProcessFlowSimulation(definition: ProcessFlowDefinition, options: ProcessFlowRuntimeOptions = {}): ProcessFlowRunResult {
   const simulation = new DesSimulation<ProcessRuntimeState>({});
-  const runtime = new ProcessFlowRuntime(definition);
+  const runtime = new ProcessFlowRuntime(definition, options.materialHandling ?? null);
   runtime.attach(simulation);
   return {
     simulation,
@@ -484,8 +651,13 @@ export function createProcessFlowSimulation(definition: ProcessFlowDefinition): 
   };
 }
 
-export function runProcessFlow(definition: ProcessFlowDefinition, untilSec: number, maxEvents?: number): ProcessFlowRunResult {
-  const result = createProcessFlowSimulation(definition);
+export function runProcessFlow(
+  definition: ProcessFlowDefinition,
+  untilSec: number,
+  maxEvents?: number,
+  options: ProcessFlowRuntimeOptions = {}
+): ProcessFlowRunResult {
+  const result = createProcessFlowSimulation(definition, options);
   result.simulation.runUntil(untilSec, maxEvents);
   return {
     ...result,

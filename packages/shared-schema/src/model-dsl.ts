@@ -234,6 +234,32 @@ export const SinkBlockDefinitionSchema = BlockBaseSchema.extend({
   kind: z.literal('sink')
 });
 
+export const MoveByTransporterBlockDefinitionSchema = BlockBaseSchema.extend({
+  kind: z.literal('moveByTransporter'),
+  fleetId: z.string(),
+  fromNodeId: z.string(),
+  toNodeId: z.string(),
+  loadTimeSec: z.number().nonnegative().default(0),
+  unloadTimeSec: z.number().nonnegative().default(0)
+});
+
+export const StoreBlockDefinitionSchema = BlockBaseSchema.extend({
+  kind: z.literal('store'),
+  storageId: z.string(),
+  itemIdAttribute: z.string().optional()
+});
+
+export const RetrieveBlockDefinitionSchema = BlockBaseSchema.extend({
+  kind: z.literal('retrieve'),
+  storageId: z.string(),
+  itemIdAttribute: z.string().optional()
+});
+
+export const ConveyBlockDefinitionSchema = BlockBaseSchema.extend({
+  kind: z.literal('convey'),
+  conveyorId: z.string()
+});
+
 export const ProcessFlowBlockDefinitionSchema = z.discriminatedUnion('kind', [
   SourceBlockDefinitionSchema,
   QueueBlockDefinitionSchema,
@@ -242,7 +268,11 @@ export const ProcessFlowBlockDefinitionSchema = z.discriminatedUnion('kind', [
   SeizeBlockDefinitionSchema,
   ReleaseBlockDefinitionSchema,
   SelectOutputBlockDefinitionSchema,
-  SinkBlockDefinitionSchema
+  SinkBlockDefinitionSchema,
+  MoveByTransporterBlockDefinitionSchema,
+  StoreBlockDefinitionSchema,
+  RetrieveBlockDefinitionSchema,
+  ConveyBlockDefinitionSchema
 ]);
 
 export const ProcessConnectionDefinitionSchema = z.object({
@@ -334,6 +364,70 @@ export const AiNativeDesModelDefinitionSchema = z.object({
   materialHandling: MaterialHandlingDefinitionSchema.optional(),
   experiments: z.array(ExperimentDefinitionSchema).default([]),
   metadata: z.record(DslLiteralSchema).default({})
+}).superRefine((model, context) => {
+  const materialBlocks = model.process.blocks.filter((block) =>
+    block.kind === 'moveByTransporter' || block.kind === 'store' || block.kind === 'retrieve' || block.kind === 'convey'
+  );
+
+  if (materialBlocks.length > 0 && !model.materialHandling) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['materialHandling'],
+      message: 'Models using Material Handling process blocks must define materialHandling'
+    });
+    return;
+  }
+
+  if (!model.materialHandling) {
+    return;
+  }
+
+  const nodeIds = new Set(model.materialHandling.nodes.map((node) => node.id));
+  const fleetIds = new Set(model.materialHandling.transporterFleets.map((fleet) => fleet.id));
+  const storageIds = new Set(model.materialHandling.storageSystems.map((storage) => storage.id));
+  const conveyorIds = new Set(model.materialHandling.conveyors.map((conveyor) => conveyor.id));
+
+  for (const block of model.process.blocks) {
+    if (block.kind === 'moveByTransporter') {
+      if (!fleetIds.has(block.fleetId)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['process', 'blocks', block.id, 'fleetId'],
+          message: `MoveByTransporter block ${block.id} references unknown fleet ${block.fleetId}`
+        });
+      }
+      if (!nodeIds.has(block.fromNodeId)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['process', 'blocks', block.id, 'fromNodeId'],
+          message: `MoveByTransporter block ${block.id} references unknown from node ${block.fromNodeId}`
+        });
+      }
+      if (!nodeIds.has(block.toNodeId)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['process', 'blocks', block.id, 'toNodeId'],
+          message: `MoveByTransporter block ${block.id} references unknown to node ${block.toNodeId}`
+        });
+      }
+    }
+
+    if ((block.kind === 'store' || block.kind === 'retrieve') && !storageIds.has(block.storageId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['process', 'blocks', block.id, 'storageId'],
+        message: `${block.kind} block ${block.id} references unknown storage ${block.storageId}`
+      });
+    }
+
+    if (block.kind === 'convey' && !conveyorIds.has(block.conveyorId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['process', 'blocks', block.id, 'conveyorId'],
+        message: `Convey block ${block.id} references unknown conveyor ${block.conveyorId}`
+      });
+    }
+  }
 });
 
 export type DslLiteral = z.infer<typeof DslLiteralSchema>;
@@ -355,6 +449,10 @@ export type SeizeBlockDefinition = z.infer<typeof SeizeBlockDefinitionSchema>;
 export type ReleaseBlockDefinition = z.infer<typeof ReleaseBlockDefinitionSchema>;
 export type SelectOutputBlockDefinition = z.infer<typeof SelectOutputBlockDefinitionSchema>;
 export type SinkBlockDefinition = z.infer<typeof SinkBlockDefinitionSchema>;
+export type MoveByTransporterBlockDefinition = z.infer<typeof MoveByTransporterBlockDefinitionSchema>;
+export type StoreBlockDefinition = z.infer<typeof StoreBlockDefinitionSchema>;
+export type RetrieveBlockDefinition = z.infer<typeof RetrieveBlockDefinitionSchema>;
+export type ConveyBlockDefinition = z.infer<typeof ConveyBlockDefinitionSchema>;
 export type ProcessFlowBlockDefinition = z.infer<typeof ProcessFlowBlockDefinitionSchema>;
 export type ProcessConnectionDefinition = z.infer<typeof ProcessConnectionDefinitionSchema>;
 export type ProcessFlowDefinition = z.infer<typeof ProcessFlowDefinitionSchema>;

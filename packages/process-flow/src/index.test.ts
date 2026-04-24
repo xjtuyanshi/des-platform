@@ -1,4 +1,5 @@
 import type { ProcessFlowDefinition } from '@des-platform/shared-schema/model-dsl';
+import { createMaterialHandlingRuntime } from '@des-platform/material-handling';
 
 import { runProcessFlow } from './index.js';
 
@@ -96,5 +97,55 @@ describe('ProcessFlowRuntime', () => {
     expect(result.snapshot.completedEntities).toBe(2);
     expect(result.snapshot.blockStats['vip-sink']?.entered).toBe(1);
     expect(result.snapshot.blockStats['standard-sink']?.entered).toBe(1);
+  });
+
+  it('executes material handling blocks through a material runtime', () => {
+    const materialHandling = createMaterialHandlingRuntime({
+      id: 'warehouse',
+      units: 'meter',
+      nodes: [
+        { id: 'dock', type: 'dock', x: 0, z: 0 },
+        { id: 'storage', type: 'storage', x: 10, z: 0 },
+        { id: 'pack', type: 'station', x: 10, z: 5 },
+        { id: 'ship', type: 'dock', x: 20, z: 5 }
+      ],
+      paths: [{ id: 'dock-storage', from: 'dock', to: 'storage', lengthM: 10, speedLimitMps: 2, bidirectional: true, mode: 'path-guided' }],
+      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'dock', speedMps: 1.5, minClearanceM: 0 }],
+      storageSystems: [{ id: 'rack', nodeId: 'storage', capacity: 1 }],
+      conveyors: [{ id: 'pack-ship', entryNodeId: 'pack', exitNodeId: 'ship', lengthM: 6, speedMps: 1 }],
+      zones: [],
+      obstacles: []
+    });
+    const flow: ProcessFlowDefinition = {
+      id: 'material-blocks',
+      resourcePools: [],
+      blocks: [
+        { id: 'source', kind: 'source', entityType: 'pallet', startAtSec: 0, scheduleAtSec: [0], attributes: {} },
+        { id: 'move', kind: 'moveByTransporter', fleetId: 'amr', fromNodeId: 'dock', toNodeId: 'storage', loadTimeSec: 1, unloadTimeSec: 2 },
+        { id: 'store', kind: 'store', storageId: 'rack' },
+        { id: 'retrieve', kind: 'retrieve', storageId: 'rack' },
+        { id: 'convey', kind: 'convey', conveyorId: 'pack-ship' },
+        { id: 'sink', kind: 'sink' }
+      ],
+      connections: [
+        { from: 'source', to: 'move' },
+        { from: 'move', to: 'store' },
+        { from: 'store', to: 'retrieve' },
+        { from: 'retrieve', to: 'convey' },
+        { from: 'convey', to: 'sink' }
+      ]
+    };
+
+    const result = runProcessFlow(flow, 20, undefined, { materialHandling });
+
+    expect(result.snapshot.completedEntities).toBe(1);
+    expect(result.snapshot.entities[0]?.completedAtSec).toBe(14);
+    expect(result.snapshot.entities[0]?.attributes.locationNodeId).toBe('ship');
+    expect(result.snapshot.entities[0]?.attributes.lastRouteTravelTimeSec).toBe(5);
+    expect(result.snapshot.materialHandling?.transporterUnits[0]).toMatchObject({
+      status: 'idle',
+      currentNodeId: 'storage'
+    });
+    expect(result.snapshot.materialHandling?.storageSystems[0]?.slots[0]?.itemId).toBeNull();
   });
 });

@@ -21,12 +21,17 @@ export function compileDesModel(input: unknown): CompiledDesModel {
   return {
     model,
     defaultExperiment,
-    createRuntime: () => createProcessFlowSimulation(model.process),
+    createRuntime: () =>
+      createProcessFlowSimulation(model.process, {
+        materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null
+      }),
     createMaterialHandlingRuntime: () =>
       model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
     runExperiment: (experimentId?: string) => {
       const experiment = resolveExperiment(model, experimentId);
-      return runProcessFlow(model.process, experiment.stopTimeSec, experiment.maxEvents);
+      return runProcessFlow(model.process, experiment.stopTimeSec, experiment.maxEvents, {
+        materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null
+      });
     }
   };
 }

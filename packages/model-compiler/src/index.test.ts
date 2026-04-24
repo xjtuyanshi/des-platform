@@ -45,6 +45,72 @@ describe('model compiler', () => {
     expect(result.snapshot.entities.map((entity) => entity.completedAtSec)).toEqual([5, 10, 15, 20]);
   });
 
+  it('runs material handling process blocks through the compiler', () => {
+    const result = runDesModel({
+      schemaVersion: 'des-platform.v1',
+      id: 'mh-flow',
+      name: 'Material Handling Flow',
+      process: {
+        id: 'mh-process',
+        blocks: [
+          { id: 'source', kind: 'source', entityType: 'load', scheduleAtSec: [0] },
+          { id: 'move', kind: 'moveByTransporter', fleetId: 'amr', fromNodeId: 'dock', toNodeId: 'storage' },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [
+          { from: 'source', to: 'move' },
+          { from: 'move', to: 'sink' }
+        ]
+      },
+      materialHandling: {
+        id: 'mh',
+        nodes: [
+          { id: 'dock', type: 'dock', x: 0, z: 0 },
+          { id: 'storage', type: 'storage', x: 4, z: 0 }
+        ],
+        paths: [{ id: 'dock-storage', from: 'dock', to: 'storage', lengthM: 4 }],
+        transporterFleets: [{ id: 'amr', count: 1, homeNodeId: 'dock', speedMps: 2 }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+    });
+
+    expect(result.snapshot.completedEntities).toBe(1);
+    expect(result.snapshot.entities[0]?.completedAtSec).toBe(2);
+    expect(result.snapshot.materialHandling?.transporterUnits[0]?.currentNodeId).toBe('storage');
+  });
+
+  it('rejects material process blocks with missing material references before runtime', () => {
+    expect(() =>
+      runDesModel({
+        schemaVersion: 'des-platform.v1',
+        id: 'bad-mh',
+        name: 'Bad Material Model',
+        process: {
+          id: 'bad-mh-flow',
+          blocks: [
+            { id: 'source', kind: 'source', scheduleAtSec: [0] },
+            { id: 'move', kind: 'moveByTransporter', fleetId: 'missing', fromNodeId: 'dock', toNodeId: 'storage' },
+            { id: 'sink', kind: 'sink' }
+          ],
+          connections: [
+            { from: 'source', to: 'move' },
+            { from: 'move', to: 'sink' }
+          ]
+        },
+        materialHandling: {
+          id: 'mh',
+          nodes: [
+            { id: 'dock', type: 'dock', x: 0, z: 0 },
+            { id: 'storage', type: 'storage', x: 4, z: 0 }
+          ],
+          paths: [{ id: 'dock-storage', from: 'dock', to: 'storage', lengthM: 4 }],
+          transporterFleets: [{ id: 'amr', count: 1, homeNodeId: 'dock', speedMps: 2 }]
+        },
+        experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+      })
+    ).toThrow(/unknown fleet missing/);
+  });
+
   it('rejects invalid graph references before runtime', () => {
     expect(() =>
       runDesModel({

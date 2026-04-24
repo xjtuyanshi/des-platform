@@ -153,6 +153,9 @@ importers:
       '@des-platform/des-core':
         specifier: workspace:*
         version: link:../des-core
+      '@des-platform/material-handling':
+        specifier: workspace:*
+        version: link:../material-handling
       '@des-platform/shared-schema':
         specifier: workspace:*
         version: link:../shared-schema
