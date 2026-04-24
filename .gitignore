@@ -1,0 +1,9 @@
+node_modules
+apps/viewer/dist
+coverage
+output
+test-results
+tmp-qa
+.playwright-cli
+.cache
+.DS_Store

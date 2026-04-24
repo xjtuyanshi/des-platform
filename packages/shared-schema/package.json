@@ -1,0 +1,20 @@
+{
+  "name": "@des-platform/shared-schema",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./layout-factory": "./src/layout-factory.ts",
+    "./loader": "./src/loader.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "schema:generate": "tsx src/generate-json-schema.ts"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.24.6"
+  }
+}

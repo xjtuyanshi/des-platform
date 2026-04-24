@@ -1,0 +1,24 @@
+{
+  "name": "sim-api",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/server.ts",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "simulate:baseline": "tsx src/cli.ts baseline"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/ws": "^8.18.1"
+  },
+  "dependencies": {
+    "@des-platform/shared-schema": "workspace:*",
+    "@des-platform/simulation-core": "workspace:*",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "reporting": "workspace:*",
+    "ws": "^8.18.3"
+  }
+}

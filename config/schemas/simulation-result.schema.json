@@ -1,0 +1,1508 @@
+{
+  "$ref": "#/definitions/SimulationResult",
+  "definitions": {
+    "SimulationResult": {
+      "type": "object",
+      "properties": {
+        "scenarioId": {
+          "type": "string"
+        },
+        "layoutId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "scenario": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "layoutPath": {
+              "type": "string"
+            },
+            "durationSec": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "taktTimeSec": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "snapshotIntervalSec": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "motionDtSec": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "line": {
+              "type": "object",
+              "properties": {
+                "stationCount": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                },
+                "pacedCycleSec": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "pitchM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "skidLengthM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "skidGapM": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "carLengthM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "carWidthM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "carHeightM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "conveyorSpeedMps": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "stationCount",
+                "pacedCycleSec",
+                "pitchM",
+                "skidLengthM",
+                "skidGapM",
+                "carLengthM",
+                "carWidthM",
+                "carHeightM",
+                "conveyorSpeedMps"
+              ],
+              "additionalProperties": false
+            },
+            "stations": {
+              "type": "object",
+              "properties": {
+                "qpc": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "minItems": 1
+                },
+                "initialBinFillRatio": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "unitsPerCar": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "qpc",
+                "initialBinFillRatio",
+                "unitsPerCar"
+              ],
+              "additionalProperties": false
+            },
+            "amr": {
+              "type": "object",
+              "properties": {
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                },
+                "speedMps": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "lengthM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "widthM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "heightM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "loadTimeSec": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "unloadTimeSec": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "emptyHandlingSec": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "count",
+                "speedMps",
+                "lengthM",
+                "widthM",
+                "heightM",
+                "loadTimeSec",
+                "unloadTimeSec",
+                "emptyHandlingSec"
+              ],
+              "additionalProperties": false
+            },
+            "breakdown": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "periodic",
+                    "random"
+                  ]
+                },
+                "mtbfSec": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "repairSec": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "repairJitterRatio": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "required": [
+                "enabled",
+                "mode",
+                "mtbfSec",
+                "repairSec",
+                "repairJitterRatio"
+              ],
+              "additionalProperties": false
+            },
+            "stationBreakdown": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "availability": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "mttrSec": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "mtbfDistribution": {
+                  "type": "string",
+                  "enum": [
+                    "exponential"
+                  ]
+                },
+                "mttrDistribution": {
+                  "type": "string",
+                  "enum": [
+                    "erlang-2",
+                    "constant"
+                  ]
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "all-stations"
+                  ]
+                }
+              },
+              "required": [
+                "enabled",
+                "availability",
+                "mttrSec",
+                "mtbfDistribution",
+                "mttrDistribution",
+                "scope"
+              ],
+              "additionalProperties": false,
+              "default": {
+                "enabled": false,
+                "availability": 1,
+                "mttrSec": 300,
+                "mtbfDistribution": "exponential",
+                "mttrDistribution": "constant",
+                "scope": "all-stations"
+              }
+            },
+            "dispatch": {
+              "type": "object",
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "const": "earliest-completion-nearest-idle"
+                }
+              },
+              "required": [
+                "policy"
+              ],
+              "additionalProperties": false
+            },
+            "report": {
+              "type": "object",
+              "properties": {
+                "warmupSec": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "includeReplay": {
+                  "type": "boolean"
+                },
+                "includeStationTables": {
+                  "type": "boolean"
+                },
+                "liveWindowStartSec": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "livePlaybackSpeed": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "warmupSec",
+                "includeReplay",
+                "includeStationTables",
+                "liveWindowStartSec",
+                "livePlaybackSpeed"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "description",
+            "layoutPath",
+            "durationSec",
+            "seed",
+            "taktTimeSec",
+            "snapshotIntervalSec",
+            "motionDtSec",
+            "line",
+            "stations",
+            "amr",
+            "breakdown",
+            "dispatch",
+            "report"
+          ],
+          "additionalProperties": false
+        },
+        "layout": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "units": {
+              "type": "string",
+              "const": "meter"
+            },
+            "floor": {
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "depth": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "height": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "width",
+                "depth",
+                "height"
+              ],
+              "additionalProperties": false
+            },
+            "line": {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number"
+                    },
+                    "z": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "z"
+                  ],
+                  "additionalProperties": false
+                },
+                "end": {
+                  "$ref": "#/definitions/SimulationResult/properties/layout/properties/line/properties/start"
+                },
+                "width": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "elevation": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "pitchM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "skidLengthM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "skidGapM": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "carLengthM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "carWidthM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "carHeightM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "speedMps": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "start",
+                "end",
+                "width",
+                "elevation",
+                "pitchM",
+                "skidLengthM",
+                "skidGapM",
+                "carLengthM",
+                "carWidthM",
+                "carHeightM",
+                "speedMps"
+              ],
+              "additionalProperties": false
+            },
+            "stations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "index": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "lineX": {
+                    "type": "number"
+                  },
+                  "stationZ": {
+                    "type": "number"
+                  },
+                  "dropNodeId": {
+                    "type": "string"
+                  },
+                  "binSlots": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "x": {
+                          "type": "number"
+                        },
+                        "z": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "x",
+                        "z"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                },
+                "required": [
+                  "id",
+                  "index",
+                  "lineX",
+                  "stationZ",
+                  "dropNodeId",
+                  "binSlots"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            },
+            "facilities": {
+              "type": "object",
+              "properties": {
+                "supermarket": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "z": {
+                      "type": "number"
+                    },
+                    "width": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "depth": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "x",
+                    "z",
+                    "width",
+                    "depth"
+                  ],
+                  "additionalProperties": false
+                },
+                "emptyReturn": {
+                  "$ref": "#/definitions/SimulationResult/properties/layout/properties/facilities/properties/supermarket"
+                },
+                "amrHomes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "x": {
+                        "type": "number"
+                      },
+                      "z": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "x",
+                      "z"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1
+                }
+              },
+              "required": [
+                "supermarket",
+                "emptyReturn",
+                "amrHomes"
+              ],
+              "additionalProperties": false
+            },
+            "aisleGraph": {
+              "type": "object",
+              "properties": {
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "x": {
+                        "type": "number"
+                      },
+                      "z": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "x",
+                      "z"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1
+                },
+                "edges": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "minItems": 1
+                }
+              },
+              "required": [
+                "nodes",
+                "edges"
+              ],
+              "additionalProperties": false
+            },
+            "obstacles": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "x": {
+                    "type": "number"
+                  },
+                  "z": {
+                    "type": "number"
+                  },
+                  "width": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "depth": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "height": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "required": [
+                  "id",
+                  "x",
+                  "z",
+                  "width",
+                  "depth",
+                  "height"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "walls": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/SimulationResult/properties/layout/properties/obstacles/items"
+              }
+            },
+            "cameras": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "position": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      },
+                      "z": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "z"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "target": {
+                    "$ref": "#/definitions/SimulationResult/properties/layout/properties/cameras/items/properties/position"
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "position",
+                  "target"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            },
+            "assets": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "primitive"
+                    ]
+                  },
+                  "material": {
+                    "type": "string"
+                  },
+                  "color": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "material",
+                  "color"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "units",
+            "floor",
+            "line",
+            "stations",
+            "facilities",
+            "aisleGraph",
+            "obstacles",
+            "walls",
+            "cameras",
+            "assets"
+          ],
+          "additionalProperties": false
+        },
+        "kpis": {
+          "type": "object",
+          "properties": {
+            "completedCars": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "releasedCars": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "lineDowntimeSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "starvationSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "steadyStateCycleSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "steadyStateUph": {
+              "type": "number",
+              "minimum": 0
+            },
+            "actualAverageUph": {
+              "type": "number",
+              "minimum": 0
+            },
+            "averageTaskWaitSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "averageTaskCycleSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "maxQueueLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "amrUtilization": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "stationConsumption": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "stationDowntimeSec": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "stationAvailability": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "totalAmrDistanceM": {
+              "type": "number",
+              "minimum": 0
+            },
+            "baselinePass": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "completedCars",
+            "releasedCars",
+            "lineDowntimeSec",
+            "starvationSec",
+            "steadyStateCycleSec",
+            "steadyStateUph",
+            "actualAverageUph",
+            "averageTaskWaitSec",
+            "averageTaskCycleSec",
+            "maxQueueLength",
+            "amrUtilization",
+            "stationConsumption",
+            "stationDowntimeSec",
+            "stationAvailability",
+            "totalAmrDistanceM",
+            "baselinePass"
+          ],
+          "additionalProperties": false
+        },
+        "validation": {
+          "type": "object",
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "checks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "passed": {
+                    "type": "boolean"
+                  },
+                  "detail": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "passed",
+                  "detail"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "passed",
+            "checks"
+          ],
+          "additionalProperties": false
+        },
+        "snapshots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "simTimeSec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "line": {
+                "type": "object",
+                "properties": {
+                  "isRunning": {
+                    "type": "boolean"
+                  },
+                  "speedMps": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "activeCars": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "completedCars": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "headCarId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "tailCarId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "onlineCarIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "lineWindowStartSec": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "isRunning",
+                  "speedMps",
+                  "activeCars",
+                  "completedCars",
+                  "headCarId",
+                  "tailCarId",
+                  "onlineCarIds",
+                  "lineWindowStartSec"
+                ],
+                "additionalProperties": false
+              },
+              "cars": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sequence": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "skidId": {
+                      "type": "string"
+                    },
+                    "lineOrder": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "releaseTimeSec": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "distanceM": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "nextStationId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "distanceToNextStationM": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeToExitSec": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "z": {
+                      "type": "number"
+                    },
+                    "lengthM": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "widthM": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "heightM": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sequence",
+                    "skidId",
+                    "lineOrder",
+                    "releaseTimeSec",
+                    "distanceM",
+                    "nextStationId",
+                    "distanceToNextStationM",
+                    "timeToExitSec",
+                    "x",
+                    "y",
+                    "z",
+                    "lengthM",
+                    "widthM",
+                    "heightM"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "skids": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "carId": {
+                      "type": "string"
+                    },
+                    "releaseTimeSec": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "distanceM": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "z": {
+                      "type": "number"
+                    },
+                    "lengthM": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "widthM": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "heightM": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "carId",
+                    "releaseTimeSec",
+                    "distanceM",
+                    "x",
+                    "y",
+                    "z",
+                    "lengthM",
+                    "widthM",
+                    "heightM"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "stations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "index": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "qpc": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "currentCarId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "running",
+                        "idle",
+                        "down",
+                        "upstream-starved",
+                        "material-starved",
+                        "blocked"
+                      ]
+                    },
+                    "stateReason": {
+                      "type": "string"
+                    },
+                    "stateColor": {
+                      "type": "string"
+                    },
+                    "isStarved": {
+                      "type": "boolean"
+                    },
+                    "activeBinIndex": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "requestCount": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "starvationCount": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "bins": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "quantity": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "capacity": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "pendingRequest": {
+                            "type": "boolean"
+                          },
+                          "isActive": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "quantity",
+                          "capacity",
+                          "pendingRequest",
+                          "isActive"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "index",
+                    "qpc",
+                    "currentCarId",
+                    "state",
+                    "stateReason",
+                    "stateColor",
+                    "isStarved",
+                    "activeBinIndex",
+                    "requestCount",
+                    "starvationCount",
+                    "bins"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1
+              },
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "stationId": {
+                      "type": "string"
+                    },
+                    "binId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "queued",
+                        "assigned",
+                        "to-pickup",
+                        "loading",
+                        "to-dropoff",
+                        "unloading",
+                        "to-return",
+                        "empty-handling",
+                        "done"
+                      ]
+                    },
+                    "requestTimeSec": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "assignedAtSec": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ageSec": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "waitSec": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "assignedAmrId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "qpc": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "stationId",
+                    "binId",
+                    "status",
+                    "requestTimeSec",
+                    "assignedAtSec",
+                    "ageSec",
+                    "waitSec",
+                    "assignedAmrId",
+                    "qpc"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "amrs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "moving",
+                        "handling"
+                      ]
+                    },
+                    "phase": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "to-pickup",
+                        "loading",
+                        "to-dropoff",
+                        "unloading",
+                        "to-return",
+                        "empty-handling"
+                      ]
+                    },
+                    "taskId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "z": {
+                      "type": "number"
+                    },
+                    "yawRad": {
+                      "type": "number"
+                    },
+                    "speedMps": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "totalDistanceM": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "busyTimeSec": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "currentNodeId": {
+                      "type": "string"
+                    },
+                    "targetNodeId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "routeDestinationNodeId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "routeNodeIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "routeRemainingDistanceM": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "status",
+                    "phase",
+                    "taskId",
+                    "x",
+                    "y",
+                    "z",
+                    "yawRad",
+                    "speedMps",
+                    "totalDistanceM",
+                    "busyTimeSec",
+                    "currentNodeId",
+                    "targetNodeId",
+                    "routeDestinationNodeId",
+                    "routeNodeIds",
+                    "routeRemainingDistanceM"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "kpis": {
+                "$ref": "#/definitions/SimulationResult/properties/kpis"
+              },
+              "alerts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": [
+                        "info",
+                        "warning",
+                        "critical"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "severity",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "simTimeSec",
+              "line",
+              "cars",
+              "skids",
+              "stations",
+              "tasks",
+              "amrs",
+              "kpis",
+              "alerts"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "simTimeSec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "car-released",
+                  "station-consumed",
+                  "car-exited",
+                  "bin-emptied",
+                  "bin-refilled",
+                  "task-created",
+                  "task-assigned",
+                  "task-started",
+                  "task-finished",
+                  "line-stopped",
+                  "line-started",
+                  "station-failed",
+                  "station-repaired",
+                  "starvation-started",
+                  "starvation-cleared"
+                ]
+              },
+              "payload": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "id",
+              "simTimeSec",
+              "type",
+              "payload"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "scenarioId",
+        "layoutId",
+        "createdAt",
+        "scenario",
+        "layout",
+        "kpis",
+        "validation",
+        "snapshots",
+        "events"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

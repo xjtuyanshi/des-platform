@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowJs": false,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "declaration": false,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@des-platform/shared-schema": ["packages/shared-schema/src/index.ts"],
+      "@des-platform/shared-schema/loader": ["packages/shared-schema/src/loader.ts"],
+      "@des-platform/event-queue": ["packages/event-queue/src/index.ts"],
+      "@des-platform/domain-model": ["packages/domain-model/src/index.ts"],
+      "@des-platform/dispatching": ["packages/dispatching/src/index.ts"],
+      "@des-platform/motion-layer": ["packages/motion-layer/src/index.ts"],
+      "@des-platform/simulation-core": ["packages/simulation-core/src/index.ts"],
+      "reporting": ["apps/reporting/src/index.ts"]
+    }
+  }
+}

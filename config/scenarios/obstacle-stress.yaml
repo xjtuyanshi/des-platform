@@ -1,0 +1,46 @@
+id: obstacle-stress
+name: Obstacle Stress
+description: Aisle routing is forced onto a longer back-lane around additional safety islands and blocked corridors.
+layoutPath: ../layouts/obstacle-stress-layout.json
+durationSec: 28800
+seed: 20260425
+taktTimeSec: 40
+snapshotIntervalSec: 1
+motionDtSec: 0.1
+line:
+  stationCount: 10
+  pacedCycleSec: 40
+  pitchM: 5.1
+  skidLengthM: 5
+  skidGapM: 0.1
+  carLengthM: 4.6
+  carWidthM: 1.9
+  carHeightM: 1.6
+  conveyorSpeedMps: 0.1275
+stations:
+  qpc: [180, 200, 220, 190, 240, 210, 175, 230, 205, 250]
+  initialBinFillRatio: 1
+  unitsPerCar: 1
+amr:
+  count: 3
+  speedMps: 1.35
+  lengthM: 1.5
+  widthM: 1.5
+  heightM: 0.35
+  loadTimeSec: 8
+  unloadTimeSec: 8
+  emptyHandlingSec: 6
+breakdown:
+  enabled: false
+  mode: periodic
+  mtbfSec: 7200
+  repairSec: 300
+  repairJitterRatio: 0
+dispatch:
+  policy: earliest-completion-nearest-idle
+report:
+  warmupSec: 400
+  includeReplay: true
+  includeStationTables: true
+  liveWindowStartSec: 7190
+  livePlaybackSpeed: 4

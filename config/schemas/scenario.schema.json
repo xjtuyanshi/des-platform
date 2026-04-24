@@ -1,0 +1,323 @@
+{
+  "$ref": "#/definitions/ScenarioDefinition",
+  "definitions": {
+    "ScenarioDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "layoutPath": {
+          "type": "string"
+        },
+        "durationSec": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "taktTimeSec": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "snapshotIntervalSec": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "motionDtSec": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "line": {
+          "type": "object",
+          "properties": {
+            "stationCount": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "pacedCycleSec": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "pitchM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "skidLengthM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "skidGapM": {
+              "type": "number",
+              "minimum": 0
+            },
+            "carLengthM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "carWidthM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "carHeightM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "conveyorSpeedMps": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "stationCount",
+            "pacedCycleSec",
+            "pitchM",
+            "skidLengthM",
+            "skidGapM",
+            "carLengthM",
+            "carWidthM",
+            "carHeightM",
+            "conveyorSpeedMps"
+          ],
+          "additionalProperties": false
+        },
+        "stations": {
+          "type": "object",
+          "properties": {
+            "qpc": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "minItems": 1
+            },
+            "initialBinFillRatio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "unitsPerCar": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "qpc",
+            "initialBinFillRatio",
+            "unitsPerCar"
+          ],
+          "additionalProperties": false
+        },
+        "amr": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "speedMps": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "lengthM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "widthM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "heightM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "loadTimeSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "unloadTimeSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "emptyHandlingSec": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "count",
+            "speedMps",
+            "lengthM",
+            "widthM",
+            "heightM",
+            "loadTimeSec",
+            "unloadTimeSec",
+            "emptyHandlingSec"
+          ],
+          "additionalProperties": false
+        },
+        "breakdown": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "periodic",
+                "random"
+              ]
+            },
+            "mtbfSec": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "repairSec": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "repairJitterRatio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "required": [
+            "enabled",
+            "mode",
+            "mtbfSec",
+            "repairSec",
+            "repairJitterRatio"
+          ],
+          "additionalProperties": false
+        },
+        "stationBreakdown": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "availability": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "mttrSec": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "mtbfDistribution": {
+              "type": "string",
+              "enum": [
+                "exponential"
+              ]
+            },
+            "mttrDistribution": {
+              "type": "string",
+              "enum": [
+                "erlang-2",
+                "constant"
+              ]
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "all-stations"
+              ]
+            }
+          },
+          "required": [
+            "enabled",
+            "availability",
+            "mttrSec",
+            "mtbfDistribution",
+            "mttrDistribution",
+            "scope"
+          ],
+          "additionalProperties": false,
+          "default": {
+            "enabled": false,
+            "availability": 1,
+            "mttrSec": 300,
+            "mtbfDistribution": "exponential",
+            "mttrDistribution": "constant",
+            "scope": "all-stations"
+          }
+        },
+        "dispatch": {
+          "type": "object",
+          "properties": {
+            "policy": {
+              "type": "string",
+              "const": "earliest-completion-nearest-idle"
+            }
+          },
+          "required": [
+            "policy"
+          ],
+          "additionalProperties": false
+        },
+        "report": {
+          "type": "object",
+          "properties": {
+            "warmupSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "includeReplay": {
+              "type": "boolean"
+            },
+            "includeStationTables": {
+              "type": "boolean"
+            },
+            "liveWindowStartSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "livePlaybackSpeed": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "warmupSec",
+            "includeReplay",
+            "includeStationTables",
+            "liveWindowStartSec",
+            "livePlaybackSpeed"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "layoutPath",
+        "durationSec",
+        "seed",
+        "taktTimeSec",
+        "snapshotIntervalSec",
+        "motionDtSec",
+        "line",
+        "stations",
+        "amr",
+        "breakdown",
+        "dispatch",
+        "report"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

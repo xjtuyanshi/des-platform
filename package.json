@@ -1,0 +1,24 @@
+{
+  "name": "des-platform",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "generate:schema": "pnpm --filter @des-platform/shared-schema schema:generate",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:api": "pnpm --filter sim-api dev",
+    "dev:viewer": "pnpm --filter viewer dev",
+    "simulate:baseline": "pnpm --filter sim-api simulate:baseline",
+    "report:baseline": "pnpm --filter reporting report:baseline",
+    "build": "pnpm run generate:schema && pnpm run typecheck && pnpm --filter viewer build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

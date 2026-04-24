@@ -1,0 +1,239 @@
+{
+  "id": "obstacle-stress-layout",
+  "name": "Automotive Assembly Line Obstacle Stress Layout",
+  "units": "meter",
+  "floor": {
+    "width": 92,
+    "depth": 30,
+    "height": 0.2
+  },
+  "line": {
+    "start": { "x": 18, "z": 0 },
+    "end": { "x": 69, "z": 0 },
+    "width": 2.6,
+    "elevation": 0.55,
+    "pitchM": 5.1,
+    "skidLengthM": 5,
+    "skidGapM": 0.1,
+    "carLengthM": 4.6,
+    "carWidthM": 1.9,
+    "carHeightM": 1.6,
+    "speedMps": 0.1275
+  },
+  "stations": [
+    {
+      "id": "S1",
+      "index": 1,
+      "lineX": 20.55,
+      "stationZ": 0,
+      "dropNodeId": "drop-s1",
+      "binSlots": [
+        { "id": "S1-A", "x": 19.6, "z": 5.2 },
+        { "id": "S1-B", "x": 21.5, "z": 5.2 }
+      ]
+    },
+    {
+      "id": "S2",
+      "index": 2,
+      "lineX": 25.65,
+      "stationZ": 0,
+      "dropNodeId": "drop-s2",
+      "binSlots": [
+        { "id": "S2-A", "x": 24.7, "z": 5.2 },
+        { "id": "S2-B", "x": 26.6, "z": 5.2 }
+      ]
+    },
+    {
+      "id": "S3",
+      "index": 3,
+      "lineX": 30.75,
+      "stationZ": 0,
+      "dropNodeId": "drop-s3",
+      "binSlots": [
+        { "id": "S3-A", "x": 29.8, "z": 5.2 },
+        { "id": "S3-B", "x": 31.7, "z": 5.2 }
+      ]
+    },
+    {
+      "id": "S4",
+      "index": 4,
+      "lineX": 35.85,
+      "stationZ": 0,
+      "dropNodeId": "drop-s4",
+      "binSlots": [
+        { "id": "S4-A", "x": 34.9, "z": 5.2 },
+        { "id": "S4-B", "x": 36.8, "z": 5.2 }
+      ]
+    },
+    {
+      "id": "S5",
+      "index": 5,
+      "lineX": 40.95,
+      "stationZ": 0,
+      "dropNodeId": "drop-s5",
+      "binSlots": [
+        { "id": "S5-A", "x": 40.0, "z": 5.2 },
+        { "id": "S5-B", "x": 41.9, "z": 5.2 }
+      ]
+    },
+    {
+      "id": "S6",
+      "index": 6,
+      "lineX": 46.05,
+      "stationZ": 0,
+      "dropNodeId": "drop-s6",
+      "binSlots": [
+        { "id": "S6-A", "x": 45.1, "z": 5.2 },
+        { "id": "S6-B", "x": 47.0, "z": 5.2 }
+      ]
+    },
+    {
+      "id": "S7",
+      "index": 7,
+      "lineX": 51.15,
+      "stationZ": 0,
+      "dropNodeId": "drop-s7",
+      "binSlots": [
+        { "id": "S7-A", "x": 50.2, "z": 5.2 },
+        { "id": "S7-B", "x": 52.1, "z": 5.2 }
+      ]
+    },
+    {
+      "id": "S8",
+      "index": 8,
+      "lineX": 56.25,
+      "stationZ": 0,
+      "dropNodeId": "drop-s8",
+      "binSlots": [
+        { "id": "S8-A", "x": 55.3, "z": 5.2 },
+        { "id": "S8-B", "x": 57.2, "z": 5.2 }
+      ]
+    },
+    {
+      "id": "S9",
+      "index": 9,
+      "lineX": 61.35,
+      "stationZ": 0,
+      "dropNodeId": "drop-s9",
+      "binSlots": [
+        { "id": "S9-A", "x": 60.4, "z": 5.2 },
+        { "id": "S9-B", "x": 62.3, "z": 5.2 }
+      ]
+    },
+    {
+      "id": "S10",
+      "index": 10,
+      "lineX": 66.45,
+      "stationZ": 0,
+      "dropNodeId": "drop-s10",
+      "binSlots": [
+        { "id": "S10-A", "x": 65.5, "z": 5.2 },
+        { "id": "S10-B", "x": 67.4, "z": 5.2 }
+      ]
+    }
+  ],
+  "facilities": {
+    "supermarket": { "id": "supermarket", "x": 9, "z": 11, "width": 4.5, "depth": 3.4 },
+    "emptyReturn": { "id": "empty-return", "x": 9, "z": 16.5, "width": 4.5, "depth": 3.4 },
+    "amrHomes": [
+      { "id": "home-1", "x": 11, "z": 11.3 },
+      { "id": "home-2", "x": 13, "z": 11.3 },
+      { "id": "home-3", "x": 15, "z": 11.3 }
+    ]
+  },
+  "aisleGraph": {
+    "nodes": [
+      { "id": "entry", "x": 18, "z": 11.3 },
+      { "id": "supermarket", "x": 9, "z": 11 },
+      { "id": "empty-return", "x": 9, "z": 16.5 },
+      { "id": "home-1", "x": 11, "z": 11.3 },
+      { "id": "home-2", "x": 13, "z": 11.3 },
+      { "id": "home-3", "x": 15, "z": 11.3 },
+      { "id": "aisle-s1", "x": 20.55, "z": 11.3 },
+      { "id": "aisle-s2", "x": 25.65, "z": 11.3 },
+      { "id": "aisle-s3", "x": 30.75, "z": 11.3 },
+      { "id": "aisle-s5", "x": 40.95, "z": 11.3 },
+      { "id": "aisle-s6", "x": 46.05, "z": 11.3 },
+      { "id": "aisle-s8", "x": 56.25, "z": 11.3 },
+      { "id": "aisle-s10", "x": 66.45, "z": 11.3 },
+      { "id": "stress-s4-route", "x": 35.2, "z": 18.8 },
+      { "id": "stress-s7-route", "x": 48, "z": 20.8 },
+      { "id": "stress-s9-route", "x": 62.4, "z": 20.8 },
+      { "id": "drop-s1", "x": 20.55, "z": 7.8 },
+      { "id": "drop-s2", "x": 25.65, "z": 7.8 },
+      { "id": "drop-s3", "x": 30.75, "z": 7.8 },
+      { "id": "drop-s4", "x": 35.85, "z": 7.8 },
+      { "id": "drop-s5", "x": 40.95, "z": 7.8 },
+      { "id": "drop-s6", "x": 46.05, "z": 7.8 },
+      { "id": "drop-s7", "x": 51.15, "z": 7.8 },
+      { "id": "drop-s8", "x": 56.25, "z": 7.8 },
+      { "id": "drop-s9", "x": 61.35, "z": 7.8 },
+      { "id": "drop-s10", "x": 66.45, "z": 7.8 }
+    ],
+    "edges": [
+      ["supermarket", "home-1"],
+      ["supermarket", "home-2"],
+      ["supermarket", "home-3"],
+      ["supermarket", "empty-return"],
+      ["home-1", "entry"],
+      ["home-2", "entry"],
+      ["home-3", "entry"],
+      ["entry", "aisle-s1"],
+      ["aisle-s1", "aisle-s2"],
+      ["aisle-s2", "aisle-s3"],
+      ["aisle-s1", "drop-s1"],
+      ["aisle-s2", "drop-s2"],
+      ["aisle-s3", "drop-s3"],
+      ["aisle-s3", "stress-s4-route"],
+      ["stress-s4-route", "drop-s4"],
+      ["stress-s4-route", "drop-s5"],
+      ["stress-s4-route", "stress-s7-route"],
+      ["stress-s7-route", "drop-s6"],
+      ["stress-s7-route", "drop-s7"],
+      ["stress-s7-route", "stress-s9-route"],
+      ["stress-s9-route", "drop-s8"],
+      ["stress-s9-route", "drop-s9"],
+      ["stress-s9-route", "aisle-s10"],
+      ["aisle-s10", "drop-s10"],
+      ["entry", "empty-return"]
+    ]
+  },
+  "obstacles": [
+    { "id": "safety-island-1", "x": 37.2, "z": 11.1, "width": 5.2, "depth": 2.8, "height": 1.2 },
+    { "id": "safety-island-2", "x": 49.9, "z": 11.1, "width": 4.2, "depth": 2.8, "height": 1.2 },
+    { "id": "safety-island-3", "x": 60.8, "z": 11.1, "width": 4.2, "depth": 2.8, "height": 1.2 },
+    { "id": "blocked-corridor-1", "x": 39.6, "z": 14.8, "width": 12.4, "depth": 2.2, "height": 1.6 },
+    { "id": "blocked-corridor-2", "x": 54.1, "z": 14.8, "width": 11.6, "depth": 2.2, "height": 1.6 }
+  ],
+  "walls": [
+    { "id": "north-wall", "x": 43.5, "z": 18.8, "width": 56, "depth": 0.8, "height": 2.4 },
+    { "id": "south-wall", "x": 43.5, "z": -5.8, "width": 56, "depth": 0.8, "height": 2.4 }
+  ],
+  "cameras": [
+    {
+      "id": "overview",
+      "label": "Main Line Overview",
+      "position": { "x": 45, "y": 30, "z": 22 },
+      "target": { "x": 43, "y": 0, "z": 4 }
+    },
+    {
+      "id": "car-closeup",
+      "label": "Car Close-up",
+      "position": { "x": 41, "y": 9, "z": -5 },
+      "target": { "x": 41, "y": 1, "z": 0 }
+    },
+    {
+      "id": "amr-aisle",
+      "label": "AMR Aisle",
+      "position": { "x": 28, "y": 15, "z": 26 },
+      "target": { "x": 50, "y": 0, "z": 13.8 }
+    }
+  ],
+  "assets": {
+    "carBody": { "kind": "primitive", "material": "painted-metal", "color": "#4cb0ff" },
+    "skid": { "kind": "primitive", "material": "steel", "color": "#8a94a5" },
+    "amr": { "kind": "primitive", "material": "powder-coat", "color": "#1ed0ff" },
+    "binFull": { "kind": "primitive", "material": "plastic", "color": "#7ddc6f" },
+    "binEmpty": { "kind": "primitive", "material": "plastic", "color": "#c4c9d4" }
+  }
+}

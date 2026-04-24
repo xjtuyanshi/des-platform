@@ -1,0 +1,645 @@
+{
+  "$ref": "#/definitions/WorldSnapshot",
+  "definitions": {
+    "WorldSnapshot": {
+      "type": "object",
+      "properties": {
+        "simTimeSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "line": {
+          "type": "object",
+          "properties": {
+            "isRunning": {
+              "type": "boolean"
+            },
+            "speedMps": {
+              "type": "number",
+              "minimum": 0
+            },
+            "activeCars": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "completedCars": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "headCarId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tailCarId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "onlineCarIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "lineWindowStartSec": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "isRunning",
+            "speedMps",
+            "activeCars",
+            "completedCars",
+            "headCarId",
+            "tailCarId",
+            "onlineCarIds",
+            "lineWindowStartSec"
+          ],
+          "additionalProperties": false
+        },
+        "cars": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "sequence": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "skidId": {
+                "type": "string"
+              },
+              "lineOrder": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "releaseTimeSec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "distanceM": {
+                "type": "number",
+                "minimum": 0
+              },
+              "nextStationId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "distanceToNextStationM": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timeToExitSec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "z": {
+                "type": "number"
+              },
+              "lengthM": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "widthM": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "heightM": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "sequence",
+              "skidId",
+              "lineOrder",
+              "releaseTimeSec",
+              "distanceM",
+              "nextStationId",
+              "distanceToNextStationM",
+              "timeToExitSec",
+              "x",
+              "y",
+              "z",
+              "lengthM",
+              "widthM",
+              "heightM"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "skids": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "carId": {
+                "type": "string"
+              },
+              "releaseTimeSec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "distanceM": {
+                "type": "number",
+                "minimum": 0
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "z": {
+                "type": "number"
+              },
+              "lengthM": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "widthM": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "heightM": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "carId",
+              "releaseTimeSec",
+              "distanceM",
+              "x",
+              "y",
+              "z",
+              "lengthM",
+              "widthM",
+              "heightM"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "stations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "index": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "qpc": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "currentCarId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "running",
+                  "idle",
+                  "down",
+                  "upstream-starved",
+                  "material-starved",
+                  "blocked"
+                ]
+              },
+              "stateReason": {
+                "type": "string"
+              },
+              "stateColor": {
+                "type": "string"
+              },
+              "isStarved": {
+                "type": "boolean"
+              },
+              "activeBinIndex": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "requestCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "starvationCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "bins": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "quantity": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "capacity": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "pendingRequest": {
+                      "type": "boolean"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "quantity",
+                    "capacity",
+                    "pendingRequest",
+                    "isActive"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "required": [
+              "id",
+              "index",
+              "qpc",
+              "currentCarId",
+              "state",
+              "stateReason",
+              "stateColor",
+              "isStarved",
+              "activeBinIndex",
+              "requestCount",
+              "starvationCount",
+              "bins"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "stationId": {
+                "type": "string"
+              },
+              "binId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "assigned",
+                  "to-pickup",
+                  "loading",
+                  "to-dropoff",
+                  "unloading",
+                  "to-return",
+                  "empty-handling",
+                  "done"
+                ]
+              },
+              "requestTimeSec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "assignedAtSec": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ageSec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "waitSec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "assignedAmrId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "qpc": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "stationId",
+              "binId",
+              "status",
+              "requestTimeSec",
+              "assignedAtSec",
+              "ageSec",
+              "waitSec",
+              "assignedAmrId",
+              "qpc"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "amrs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "moving",
+                  "handling"
+                ]
+              },
+              "phase": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "to-pickup",
+                  "loading",
+                  "to-dropoff",
+                  "unloading",
+                  "to-return",
+                  "empty-handling"
+                ]
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "z": {
+                "type": "number"
+              },
+              "yawRad": {
+                "type": "number"
+              },
+              "speedMps": {
+                "type": "number",
+                "minimum": 0
+              },
+              "totalDistanceM": {
+                "type": "number",
+                "minimum": 0
+              },
+              "busyTimeSec": {
+                "type": "number",
+                "minimum": 0
+              },
+              "currentNodeId": {
+                "type": "string"
+              },
+              "targetNodeId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "routeDestinationNodeId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "routeNodeIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "routeRemainingDistanceM": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "status",
+              "phase",
+              "taskId",
+              "x",
+              "y",
+              "z",
+              "yawRad",
+              "speedMps",
+              "totalDistanceM",
+              "busyTimeSec",
+              "currentNodeId",
+              "targetNodeId",
+              "routeDestinationNodeId",
+              "routeNodeIds",
+              "routeRemainingDistanceM"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "kpis": {
+          "type": "object",
+          "properties": {
+            "completedCars": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "releasedCars": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "lineDowntimeSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "starvationSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "steadyStateCycleSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "steadyStateUph": {
+              "type": "number",
+              "minimum": 0
+            },
+            "actualAverageUph": {
+              "type": "number",
+              "minimum": 0
+            },
+            "averageTaskWaitSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "averageTaskCycleSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "maxQueueLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "amrUtilization": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "stationConsumption": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "stationDowntimeSec": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "stationAvailability": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "totalAmrDistanceM": {
+              "type": "number",
+              "minimum": 0
+            },
+            "baselinePass": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "completedCars",
+            "releasedCars",
+            "lineDowntimeSec",
+            "starvationSec",
+            "steadyStateCycleSec",
+            "steadyStateUph",
+            "actualAverageUph",
+            "averageTaskWaitSec",
+            "averageTaskCycleSec",
+            "maxQueueLength",
+            "amrUtilization",
+            "stationConsumption",
+            "stationDowntimeSec",
+            "stationAvailability",
+            "totalAmrDistanceM",
+            "baselinePass"
+          ],
+          "additionalProperties": false
+        },
+        "alerts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "info",
+                  "warning",
+                  "critical"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "simTimeSec",
+        "line",
+        "cars",
+        "skids",
+        "stations",
+        "tasks",
+        "amrs",
+        "kpis",
+        "alerts"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

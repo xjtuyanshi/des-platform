@@ -1,0 +1,56 @@
+{
+  "$ref": "#/definitions/EventLogEntry",
+  "definitions": {
+    "EventLogEntry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "simTimeSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "car-released",
+            "station-consumed",
+            "car-exited",
+            "bin-emptied",
+            "bin-refilled",
+            "task-created",
+            "task-assigned",
+            "task-started",
+            "task-finished",
+            "line-stopped",
+            "line-started",
+            "station-failed",
+            "station-repaired",
+            "starvation-started",
+            "starvation-cleared"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "required": [
+        "id",
+        "simTimeSec",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

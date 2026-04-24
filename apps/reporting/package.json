@@ -1,0 +1,14 @@
+{
+  "name": "reporting",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "report:baseline": "tsx src/cli.ts baseline"
+  },
+  "dependencies": {
+    "@des-platform/shared-schema": "workspace:*",
+    "@des-platform/simulation-core": "workspace:*"
+  }
+}

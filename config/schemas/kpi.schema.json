@@ -1,0 +1,106 @@
+{
+  "$ref": "#/definitions/KpiSummary",
+  "definitions": {
+    "KpiSummary": {
+      "type": "object",
+      "properties": {
+        "completedCars": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "releasedCars": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lineDowntimeSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "starvationSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "steadyStateCycleSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "steadyStateUph": {
+          "type": "number",
+          "minimum": 0
+        },
+        "actualAverageUph": {
+          "type": "number",
+          "minimum": 0
+        },
+        "averageTaskWaitSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "averageTaskCycleSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maxQueueLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "amrUtilization": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "stationConsumption": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "stationDowntimeSec": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "stationAvailability": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "totalAmrDistanceM": {
+          "type": "number",
+          "minimum": 0
+        },
+        "baselinePass": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "completedCars",
+        "releasedCars",
+        "lineDowntimeSec",
+        "starvationSec",
+        "steadyStateCycleSec",
+        "steadyStateUph",
+        "actualAverageUph",
+        "averageTaskWaitSec",
+        "averageTaskCycleSec",
+        "maxQueueLength",
+        "amrUtilization",
+        "stationConsumption",
+        "stationDowntimeSec",
+        "stationAvailability",
+        "totalAmrDistanceM",
+        "baselinePass"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

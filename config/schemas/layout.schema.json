@@ -1,0 +1,426 @@
+{
+  "$ref": "#/definitions/LayoutDefinition",
+  "definitions": {
+    "LayoutDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "units": {
+          "type": "string",
+          "const": "meter"
+        },
+        "floor": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "depth": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "height": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "width",
+            "depth",
+            "height"
+          ],
+          "additionalProperties": false
+        },
+        "line": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x",
+                "z"
+              ],
+              "additionalProperties": false
+            },
+            "end": {
+              "$ref": "#/definitions/LayoutDefinition/properties/line/properties/start"
+            },
+            "width": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "elevation": {
+              "type": "number",
+              "minimum": 0
+            },
+            "pitchM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "skidLengthM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "skidGapM": {
+              "type": "number",
+              "minimum": 0
+            },
+            "carLengthM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "carWidthM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "carHeightM": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "speedMps": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "start",
+            "end",
+            "width",
+            "elevation",
+            "pitchM",
+            "skidLengthM",
+            "skidGapM",
+            "carLengthM",
+            "carWidthM",
+            "carHeightM",
+            "speedMps"
+          ],
+          "additionalProperties": false
+        },
+        "stations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "index": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "lineX": {
+                "type": "number"
+              },
+              "stationZ": {
+                "type": "number"
+              },
+              "dropNodeId": {
+                "type": "string"
+              },
+              "binSlots": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "z": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "x",
+                    "z"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "required": [
+              "id",
+              "index",
+              "lineX",
+              "stationZ",
+              "dropNodeId",
+              "binSlots"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "facilities": {
+          "type": "object",
+          "properties": {
+            "supermarket": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                },
+                "width": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "depth": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "id",
+                "x",
+                "z",
+                "width",
+                "depth"
+              ],
+              "additionalProperties": false
+            },
+            "emptyReturn": {
+              "$ref": "#/definitions/LayoutDefinition/properties/facilities/properties/supermarket"
+            },
+            "amrHomes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "x": {
+                    "type": "number"
+                  },
+                  "z": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "x",
+                  "z"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "supermarket",
+            "emptyReturn",
+            "amrHomes"
+          ],
+          "additionalProperties": false
+        },
+        "aisleGraph": {
+          "type": "object",
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "x": {
+                    "type": "number"
+                  },
+                  "z": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "x",
+                  "z"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            },
+            "edges": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "nodes",
+            "edges"
+          ],
+          "additionalProperties": false
+        },
+        "obstacles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "x": {
+                "type": "number"
+              },
+              "z": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "depth": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "height": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "z",
+              "width",
+              "depth",
+              "height"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "walls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LayoutDefinition/properties/obstacles/items"
+          }
+        },
+        "cameras": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "position": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "z": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false
+              },
+              "target": {
+                "$ref": "#/definitions/LayoutDefinition/properties/cameras/items/properties/position"
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "position",
+              "target"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "assets": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "primitive"
+                ]
+              },
+              "material": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "material",
+              "color"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "units",
+        "floor",
+        "line",
+        "stations",
+        "facilities",
+        "aisleGraph",
+        "obstacles",
+        "walls",
+        "cameras",
+        "assets"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
