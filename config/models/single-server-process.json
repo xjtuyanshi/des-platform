@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "des-platform.v1",
+  "id": "single-server-process",
+  "name": "Single Server Process",
+  "description": "Generic Process Flow smoke model with a single constrained server.",
+  "process": {
+    "id": "single-server-flow",
+    "resourcePools": [
+      {
+        "id": "server",
+        "name": "Server",
+        "capacity": 1
+      }
+    ],
+    "blocks": [
+      {
+        "id": "source",
+        "kind": "source",
+        "entityType": "job",
+        "startAtSec": 0,
+        "intervalSec": 3,
+        "maxArrivals": 5
+      },
+      {
+        "id": "queue",
+        "kind": "queue",
+        "capacity": 20
+      },
+      {
+        "id": "service",
+        "kind": "service",
+        "resourcePoolId": "server",
+        "durationSec": 5
+      },
+      {
+        "id": "sink",
+        "kind": "sink"
+      }
+    ],
+    "connections": [
+      {
+        "from": "source",
+        "to": "queue"
+      },
+      {
+        "from": "queue",
+        "to": "service"
+      },
+      {
+        "from": "service",
+        "to": "sink"
+      }
+    ]
+  },
+  "experiments": [
+    {
+      "id": "baseline",
+      "name": "Baseline",
+      "stopTimeSec": 40
+    }
+  ]
+}

@@ -27,6 +27,8 @@ The platform is being rebuilt around generic simulation primitives:
 - `apps/sim-api`: HTTP + WebSocket API for replay/live viewer data
 - `apps/viewer`: React + Three.js factory viewer
 - `apps/reporting`: static report renderer and CLI
+- `apps/model-runner`: headless CLI for validating and running generic AI-native DSL models
+- `config/models`: generic process/material-handling model examples
 - `config/layouts`: meter-based factory layouts
 - `config/scenarios`: YAML scenario definitions
 - `config/schemas`: generated JSON Schema artifacts
@@ -61,6 +63,7 @@ pnpm install
 pnpm generate:schema
 pnpm typecheck
 pnpm test
+pnpm run:model
 pnpm dev:api
 pnpm dev:viewer
 pnpm report:baseline
@@ -79,6 +82,15 @@ It is intentionally code/data based instead of drag-and-drop based:
 - `@des-platform/process-flow` executes the model on `@des-platform/des-core`.
 - `@des-platform/material-handling` provides the first generic material-flow runtime layer for `MoveByTransporter`, `Store`, `Retrieve`, and `Convey` blocks.
 - Generated JSON Schemas include `process-flow.schema.json`, `material-handling.schema.json`, and `model-dsl.schema.json`.
+
+Generic models can be run without the viewer:
+
+```bash
+pnpm run:model
+pnpm run:model config/models/warehouse-material-flow.json baseline
+```
+
+The runner writes serializable results to `output/<model-id>-<experiment-id>-run.json` with event logs, process snapshots, material-handling state, and summary KPIs.
 
 Viewer defaults:
 

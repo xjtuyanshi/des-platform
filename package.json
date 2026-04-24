@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "dev:api": "pnpm --filter sim-api dev",
     "dev:viewer": "pnpm --filter viewer dev",
+    "run:model": "pnpm --filter model-runner run run",
     "simulate:baseline": "pnpm --filter sim-api simulate:baseline",
     "report:baseline": "pnpm --filter reporting report:baseline",
     "build": "pnpm run generate:schema && pnpm run typecheck && pnpm --filter viewer build"

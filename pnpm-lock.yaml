@@ -21,6 +21,15 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.12.2)(tsx@4.21.0)(yaml@2.8.3)
 
+  apps/model-runner:
+    dependencies:
+      '@des-platform/model-compiler':
+        specifier: workspace:*
+        version: link:../../packages/model-compiler
+      '@des-platform/shared-schema':
+        specifier: workspace:*
+        version: link:../../packages/shared-schema
+
   apps/reporting:
     dependencies:
       '@des-platform/shared-schema':

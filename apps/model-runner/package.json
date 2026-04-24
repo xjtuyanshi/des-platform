@@ -1,0 +1,14 @@
+{
+  "name": "model-runner",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/cli.ts",
+  "scripts": {
+    "run": "tsx src/cli.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@des-platform/model-compiler": "workspace:*",
+    "@des-platform/shared-schema": "workspace:*"
+  }
+}

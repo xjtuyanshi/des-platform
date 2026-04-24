@@ -1,4 +1,4 @@
-import { compileDesModel, runDesModel } from './index.js';
+import { compileDesModel, runDesModel, runDesModelToResult } from './index.js';
 
 describe('model compiler', () => {
   it('validates and runs an AI-native process model DSL', () => {
@@ -109,6 +109,35 @@ describe('model compiler', () => {
         experiments: [{ id: 'baseline', stopTimeSec: 10 }]
       })
     ).toThrow(/unknown fleet missing/);
+  });
+
+  it('builds a serializable generic run result for headless workflows', () => {
+    const result = runDesModelToResult({
+      schemaVersion: 'des-platform.v1',
+      id: 'serializable',
+      name: 'Serializable Run',
+      process: {
+        id: 'flow',
+        resourcePools: [{ id: 'server', capacity: 1 }],
+        blocks: [
+          { id: 'source', kind: 'source', entityType: 'job', scheduleAtSec: [0, 0] },
+          { id: 'service', kind: 'service', resourcePoolId: 'server', durationSec: 3 },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [
+          { from: 'source', to: 'service' },
+          { from: 'service', to: 'sink' }
+        ]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+    });
+
+    expect(result.schemaVersion).toBe('des-platform.run.v1');
+    expect(result.summary.createdEntities).toBe(2);
+    expect(result.summary.completedEntities).toBe(2);
+    expect(result.summary.averageCycleTimeSec).toBe(4.5);
+    expect(result.summary.stoppedBy).toBe('empty');
+    expect(JSON.parse(JSON.stringify(result)).modelId).toBe('serializable');
   });
 
   it('rejects invalid graph references before runtime', () => {

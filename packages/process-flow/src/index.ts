@@ -1,4 +1,4 @@
-import { DesSimulation, type DesEventPayload } from '@des-platform/des-core';
+import { DesSimulation, type DesEventPayload, type DesRunResult } from '@des-platform/des-core';
 import type { MaterialHandlingRuntime, MaterialHandlingSnapshot, TransporterUnitState } from '@des-platform/material-handling';
 import {
   ProcessFlowDefinitionSchema,
@@ -77,6 +77,7 @@ export type ProcessFlowRunResult = {
   simulation: DesSimulation;
   runtime: ProcessFlowRuntime;
   snapshot: ProcessFlowSnapshot;
+  runResult: DesRunResult | null;
 };
 
 type ProcessRuntimeState = Record<string, never>;
@@ -647,7 +648,8 @@ export function createProcessFlowSimulation(definition: ProcessFlowDefinition, o
   return {
     simulation,
     runtime,
-    snapshot: runtime.getSnapshot(simulation.nowSec)
+    snapshot: runtime.getSnapshot(simulation.nowSec),
+    runResult: null
   };
 }
 
@@ -658,9 +660,10 @@ export function runProcessFlow(
   options: ProcessFlowRuntimeOptions = {}
 ): ProcessFlowRunResult {
   const result = createProcessFlowSimulation(definition, options);
-  result.simulation.runUntil(untilSec, maxEvents);
+  const runResult = result.simulation.runUntil(untilSec, maxEvents);
   return {
     ...result,
-    snapshot: result.runtime.getSnapshot(result.simulation.nowSec)
+    snapshot: result.runtime.getSnapshot(result.simulation.nowSec),
+    runResult
   };
 }

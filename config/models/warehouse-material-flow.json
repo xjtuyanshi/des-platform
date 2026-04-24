@@ -1,0 +1,142 @@
+{
+  "schemaVersion": "des-platform.v1",
+  "id": "warehouse-material-flow",
+  "name": "Warehouse Material Flow",
+  "description": "Generic warehouse flow with AMR movement, storage, retrieval, and conveyor travel.",
+  "process": {
+    "id": "warehouse-flow",
+    "blocks": [
+      {
+        "id": "source",
+        "kind": "source",
+        "entityType": "pallet",
+        "scheduleAtSec": [0, 4],
+        "attributes": {
+          "orderClass": "standard"
+        }
+      },
+      {
+        "id": "move-to-rack",
+        "kind": "moveByTransporter",
+        "fleetId": "amr",
+        "fromNodeId": "dock",
+        "toNodeId": "rack",
+        "loadTimeSec": 1,
+        "unloadTimeSec": 1
+      },
+      {
+        "id": "store",
+        "kind": "store",
+        "storageId": "rack-a"
+      },
+      {
+        "id": "retrieve",
+        "kind": "retrieve",
+        "storageId": "rack-a"
+      },
+      {
+        "id": "convey-to-ship",
+        "kind": "convey",
+        "conveyorId": "pack-ship"
+      },
+      {
+        "id": "sink",
+        "kind": "sink"
+      }
+    ],
+    "connections": [
+      {
+        "from": "source",
+        "to": "move-to-rack"
+      },
+      {
+        "from": "move-to-rack",
+        "to": "store"
+      },
+      {
+        "from": "store",
+        "to": "retrieve"
+      },
+      {
+        "from": "retrieve",
+        "to": "convey-to-ship"
+      },
+      {
+        "from": "convey-to-ship",
+        "to": "sink"
+      }
+    ]
+  },
+  "materialHandling": {
+    "id": "warehouse-layout",
+    "nodes": [
+      {
+        "id": "dock",
+        "type": "dock",
+        "x": 0,
+        "z": 0
+      },
+      {
+        "id": "rack",
+        "type": "storage",
+        "x": 10,
+        "z": 0
+      },
+      {
+        "id": "pack",
+        "type": "station",
+        "x": 10,
+        "z": 6
+      },
+      {
+        "id": "ship",
+        "type": "dock",
+        "x": 18,
+        "z": 6
+      }
+    ],
+    "paths": [
+      {
+        "id": "dock-rack",
+        "from": "dock",
+        "to": "rack",
+        "lengthM": 10,
+        "speedLimitMps": 2
+      }
+    ],
+    "transporterFleets": [
+      {
+        "id": "amr",
+        "vehicleType": "amr",
+        "navigation": "path-guided",
+        "count": 1,
+        "homeNodeId": "dock",
+        "speedMps": 1.5,
+        "minClearanceM": 0.3
+      }
+    ],
+    "storageSystems": [
+      {
+        "id": "rack-a",
+        "nodeId": "rack",
+        "capacity": 2
+      }
+    ],
+    "conveyors": [
+      {
+        "id": "pack-ship",
+        "entryNodeId": "pack",
+        "exitNodeId": "ship",
+        "lengthM": 8,
+        "speedMps": 1
+      }
+    ]
+  },
+  "experiments": [
+    {
+      "id": "baseline",
+      "name": "Baseline",
+      "stopTimeSec": 40
+    }
+  ]
+}
