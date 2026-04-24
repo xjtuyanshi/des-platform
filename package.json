@@ -12,6 +12,7 @@
     "dev:api": "pnpm --filter sim-api dev",
     "dev:viewer": "pnpm --filter viewer dev",
     "run:model": "pnpm --filter model-runner run run",
+    "run:experiment": "pnpm --filter model-runner run experiment",
     "validate:model": "pnpm --filter model-runner run validate",
     "simulate:baseline": "pnpm --filter sim-api simulate:baseline",
     "report:baseline": "pnpm --filter reporting report:baseline",

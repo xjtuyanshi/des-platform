@@ -197,6 +197,8 @@ describe('shared schema', () => {
     });
 
     expect(model.experiments[0]?.seed).toBe(1234);
+    expect(model.experiments[0]?.replications).toBe(1);
+    expect(model.experiments[0]?.seedStride).toBe(1);
     expect(model.process.blocks[1]?.kind).toBe('delay');
     expect(() =>
       AiNativeDesModelDefinitionSchema.parse({

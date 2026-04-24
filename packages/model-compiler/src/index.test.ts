@@ -1,4 +1,4 @@
-import { analyzeDesModel, compileDesModel, runDesModel, runDesModelToResult } from './index.js';
+import { analyzeDesModel, compileDesModel, runDesModel, runDesModelReplicationsToResult, runDesModelToResult } from './index.js';
 
 describe('model compiler', () => {
   it('validates and runs an AI-native process model DSL', () => {
@@ -139,6 +139,36 @@ describe('model compiler', () => {
     expect(result.summary.stoppedBy).toBe('empty');
     expect(result.seed).toBe(1);
     expect(JSON.parse(JSON.stringify(result)).modelId).toBe('serializable');
+  });
+
+  it('builds replication experiment reports with seeded KPI statistics', () => {
+    const report = runDesModelReplicationsToResult({
+      schemaVersion: 'des-platform.v1',
+      id: 'replications',
+      name: 'Replications',
+      process: {
+        id: 'flow',
+        resourcePools: [{ id: 'server', capacity: 1 }],
+        blocks: [
+          { id: 'source', kind: 'source', intervalSec: { kind: 'uniform', min: 1, max: 3 }, maxArrivals: 4 },
+          { id: 'service', kind: 'service', resourcePoolId: 'server', durationSec: { kind: 'triangular', min: 2, mode: 4, max: 7 } },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [
+          { from: 'source', to: 'service' },
+          { from: 'service', to: 'sink' }
+        ]
+      },
+      experiments: [{ id: 'baseline', seed: 100, seedStride: 10, replications: 3, stopTimeSec: 100 }]
+    });
+
+    expect(report.schemaVersion).toBe('des-platform.experiment.v1');
+    expect(report.replications).toBe(3);
+    expect(report.replicationSummaries.map((replication) => replication.seed)).toEqual([100, 110, 120]);
+    expect(report.metricStats.completedEntities.count).toBe(3);
+    expect(report.metricStats.completedEntities.mean).toBe(4);
+    expect(report.metricStats.averageCycleTimeSec.halfWidth95).toBeGreaterThan(0);
+    expect(JSON.parse(JSON.stringify(report)).modelId).toBe('replications');
   });
 
   it('rejects invalid graph references before runtime', () => {

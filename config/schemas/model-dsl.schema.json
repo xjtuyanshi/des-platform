@@ -1002,6 +1002,16 @@
                 "minimum": 0,
                 "default": 1
               },
+              "replications": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "default": 1
+              },
+              "seedStride": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "default": 1
+              },
               "stopTimeSec": {
                 "type": "number",
                 "exclusiveMinimum": 0

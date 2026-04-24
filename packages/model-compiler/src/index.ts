@@ -46,6 +46,46 @@ export type GenericDesRunResult = {
   snapshot: ProcessFlowRunResult['snapshot'];
 };
 
+export type GenericReplicationSummary = {
+  replicationIndex: number;
+  seed: number;
+  nowSec: number;
+  stoppedBy: GenericRunSummary['stoppedBy'];
+  createdEntities: number;
+  completedEntities: number;
+  completionRatio: number;
+  averageCycleTimeSec: number;
+  maxCycleTimeSec: number;
+  executedEvents: number;
+  remainingEvents: number;
+};
+
+export type GenericMetricStats = {
+  metric: string;
+  count: number;
+  mean: number;
+  standardDeviation: number;
+  min: number;
+  max: number;
+  confidenceLevel: 0.95;
+  halfWidth95: number;
+};
+
+export type GenericDesExperimentResult = {
+  schemaVersion: 'des-platform.experiment.v1';
+  modelId: string;
+  modelName: string;
+  experimentId: string;
+  experimentName: string | null;
+  baseSeed: number;
+  seedStride: number;
+  replications: number;
+  stopTimeSec: number;
+  warmupSec: number;
+  metricStats: Record<string, GenericMetricStats>;
+  replicationSummaries: GenericReplicationSummary[];
+};
+
 export type ModelDiagnosticSeverity = 'error' | 'warning';
 
 export type ModelDiagnostic = {
@@ -69,6 +109,7 @@ export type CompiledDesModel = {
   createMaterialHandlingRuntime: () => MaterialHandlingRuntime | null;
   runExperiment: (experimentId?: string) => ProcessFlowRunResult;
   runExperimentToResult: (experimentId?: string) => GenericDesRunResult;
+  runReplicationsToResult: (experimentId?: string) => GenericDesExperimentResult;
 };
 
 export function analyzeDesModel(input: unknown): ModelDiagnosticsReport {
@@ -107,12 +148,10 @@ export function compileDesModel(input: unknown): CompiledDesModel {
     },
     runExperimentToResult: (experimentId?: string) => {
       const experiment = resolveExperiment(model, experimentId);
-      const run = runProcessFlow(model.process, experiment.stopTimeSec, experiment.maxEvents, {
-        materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
-        seed: experiment.seed
-      });
-      return buildGenericRunResult(model, experiment, run);
-    }
+      return runSingleExperimentToResult(model, experiment, experiment.seed);
+    },
+    runReplicationsToResult: (experimentId?: string) =>
+      runReplicationsForModel(model, resolveExperiment(model, experimentId))
   };
 }
 
@@ -122,6 +161,10 @@ export function runDesModel(input: unknown, experimentId?: string): ProcessFlowR
 
 export function runDesModelToResult(input: unknown, experimentId?: string): GenericDesRunResult {
   return compileDesModel(input).runExperimentToResult(experimentId);
+}
+
+export function runDesModelReplicationsToResult(input: unknown, experimentId?: string): GenericDesExperimentResult {
+  return compileDesModel(input).runReplicationsToResult(experimentId);
 }
 
 function resolveExperiment(model: AiNativeDesModelDefinition, experimentId?: string): ExperimentDefinition {
@@ -144,7 +187,8 @@ function resolveExperiment(model: AiNativeDesModelDefinition, experimentId?: str
 function buildGenericRunResult(
   model: AiNativeDesModelDefinition,
   experiment: ExperimentDefinition,
-  run: ProcessFlowRunResult
+  run: ProcessFlowRunResult,
+  seed = experiment.seed
 ): GenericDesRunResult {
   const entities = run.snapshot.entities.map((entity) => ({
     id: entity.id,
@@ -172,7 +216,7 @@ function buildGenericRunResult(
     modelName: model.name,
     experimentId: experiment.id,
     experimentName: experiment.name ?? null,
-    seed: experiment.seed,
+    seed,
     stopTimeSec: experiment.stopTimeSec,
     warmupSec: experiment.warmupSec,
     nowSec: run.snapshot.nowSec,
@@ -194,6 +238,106 @@ function buildGenericRunResult(
     eventLog: run.simulation.eventLog,
     snapshot: run.snapshot
   };
+}
+
+function runSingleExperimentToResult(
+  model: AiNativeDesModelDefinition,
+  experiment: ExperimentDefinition,
+  seed: number
+): GenericDesRunResult {
+  const run = runProcessFlow(model.process, experiment.stopTimeSec, experiment.maxEvents, {
+    materialHandling: model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
+    seed
+  });
+  return buildGenericRunResult(model, experiment, run, seed);
+}
+
+function runReplicationsForModel(
+  model: AiNativeDesModelDefinition,
+  experiment: ExperimentDefinition
+): GenericDesExperimentResult {
+  const replicationSummaries: GenericReplicationSummary[] = [];
+
+  for (let index = 0; index < experiment.replications; index += 1) {
+    const seed = experiment.seed + index * experiment.seedStride;
+    const result = runSingleExperimentToResult(model, experiment, seed);
+    replicationSummaries.push({
+      replicationIndex: index + 1,
+      seed,
+      nowSec: result.nowSec,
+      stoppedBy: result.summary.stoppedBy,
+      createdEntities: result.summary.createdEntities,
+      completedEntities: result.summary.completedEntities,
+      completionRatio: result.summary.completionRatio,
+      averageCycleTimeSec: result.summary.averageCycleTimeSec,
+      maxCycleTimeSec: result.summary.maxCycleTimeSec,
+      executedEvents: result.summary.executedEvents,
+      remainingEvents: result.summary.remainingEvents
+    });
+  }
+
+  return {
+    schemaVersion: 'des-platform.experiment.v1',
+    modelId: model.id,
+    modelName: model.name,
+    experimentId: experiment.id,
+    experimentName: experiment.name ?? null,
+    baseSeed: experiment.seed,
+    seedStride: experiment.seedStride,
+    replications: experiment.replications,
+    stopTimeSec: experiment.stopTimeSec,
+    warmupSec: experiment.warmupSec,
+    metricStats: buildMetricStats(replicationSummaries),
+    replicationSummaries
+  };
+}
+
+function buildMetricStats(replications: GenericReplicationSummary[]): Record<string, GenericMetricStats> {
+  const metrics = [
+    'createdEntities',
+    'completedEntities',
+    'completionRatio',
+    'averageCycleTimeSec',
+    'maxCycleTimeSec',
+    'executedEvents',
+    'remainingEvents',
+    'nowSec'
+  ] as const satisfies ReadonlyArray<keyof GenericReplicationSummary>;
+
+  return Object.fromEntries(
+    metrics.map((metric) => [
+      metric,
+      summarizeMetric(metric, replications.map((replication) => Number(replication[metric])))
+    ])
+  );
+}
+
+function summarizeMetric(metric: string, values: number[]): GenericMetricStats {
+  const count = values.length;
+  const mean = count === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / count;
+  const variance = count <= 1 ? 0 : values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (count - 1);
+  const standardDeviation = Math.sqrt(variance);
+  const tCritical = count <= 1 ? 0 : tCritical95(count - 1);
+
+  return {
+    metric,
+    count,
+    mean,
+    standardDeviation,
+    min: count === 0 ? 0 : Math.min(...values),
+    max: count === 0 ? 0 : Math.max(...values),
+    confidenceLevel: 0.95,
+    halfWidth95: count <= 1 ? 0 : tCritical * standardDeviation / Math.sqrt(count)
+  };
+}
+
+function tCritical95(degreesOfFreedom: number): number {
+  const table = [
+    12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
+    2.201, 2.179, 2.16, 2.145, 2.131, 2.12, 2.11, 2.101, 2.093, 2.086,
+    2.08, 2.074, 2.069, 2.064, 2.06, 2.056, 2.052, 2.048, 2.045, 2.042
+  ];
+  return table[degreesOfFreedom - 1] ?? 1.96;
 }
 
 function buildDiagnosticsReport(diagnostics: ModelDiagnostic[]): ModelDiagnosticsReport {

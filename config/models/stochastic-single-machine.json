@@ -54,11 +54,15 @@
     {
       "id": "seed-20260424",
       "seed": 20260424,
+      "replications": 8,
+      "seedStride": 1,
       "stopTimeSec": 3600
     },
     {
       "id": "seed-20260425",
       "seed": 20260425,
+      "replications": 8,
+      "seedStride": 1,
       "stopTimeSec": 3600
     }
   ]

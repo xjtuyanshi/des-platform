@@ -439,6 +439,8 @@ export const ExperimentDefinitionSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
   seed: z.number().int().nonnegative().default(1),
+  replications: z.number().int().positive().default(1),
+  seedStride: z.number().int().positive().default(1),
   stopTimeSec: z.number().positive(),
   warmupSec: z.number().nonnegative().default(0),
   maxEvents: z.number().int().positive().default(100_000)
