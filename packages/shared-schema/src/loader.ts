@@ -14,6 +14,12 @@ import {
   type LayoutDefinition,
   type ScenarioDefinition
 } from './schemas.js';
+import {
+  AiNativeDesModelDefinitionSchema,
+  ProcessFlowDefinitionSchema,
+  type AiNativeDesModelDefinition,
+  type ProcessFlowDefinition
+} from './model-dsl.js';
 
 function parseByExtension(filePath: string, raw: string): unknown {
   if (filePath.endsWith('.yaml') || filePath.endsWith('.yml')) {
@@ -31,6 +37,16 @@ export async function loadLayoutDefinition(layoutPath: string): Promise<LayoutDe
 export async function loadScenarioDefinition(scenarioPath: string): Promise<ScenarioDefinition> {
   const raw = await readFile(scenarioPath, 'utf8');
   return ScenarioDefinitionSchema.parse(parseByExtension(scenarioPath, raw));
+}
+
+export async function loadProcessFlowDefinition(flowPath: string): Promise<ProcessFlowDefinition> {
+  const raw = await readFile(flowPath, 'utf8');
+  return ProcessFlowDefinitionSchema.parse(parseByExtension(flowPath, raw));
+}
+
+export async function loadAiNativeDesModel(modelPath: string): Promise<AiNativeDesModelDefinition> {
+  const raw = await readFile(modelPath, 'utf8');
+  return AiNativeDesModelDefinitionSchema.parse(parseByExtension(modelPath, raw));
 }
 
 export async function loadScenarioBundle(scenarioPath: string): Promise<{ scenario: ScenarioDefinition; layout: LayoutDefinition; resolvedLayoutPath: string }> {
@@ -69,7 +85,9 @@ export async function writeJsonSchemas(outputDir: string): Promise<void> {
     ['kpi.schema.json', zodToJsonSchema(KpiSummarySchema, 'KpiSummary')],
     ['snapshot.schema.json', zodToJsonSchema(WorldSnapshotSchema, 'WorldSnapshot')],
     ['event-log.schema.json', zodToJsonSchema(EventLogEntrySchema, 'EventLogEntry')],
-    ['simulation-result.schema.json', zodToJsonSchema(SimulationResultSchema, 'SimulationResult')]
+    ['simulation-result.schema.json', zodToJsonSchema(SimulationResultSchema, 'SimulationResult')],
+    ['process-flow.schema.json', zodToJsonSchema(ProcessFlowDefinitionSchema, 'ProcessFlowDefinition')],
+    ['model-dsl.schema.json', zodToJsonSchema(AiNativeDesModelDefinitionSchema, 'AiNativeDesModelDefinition')]
   ] as const;
 
   await Promise.all(

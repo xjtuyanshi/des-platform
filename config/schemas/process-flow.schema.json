@@ -1,0 +1,379 @@
+{
+  "$ref": "#/definitions/ProcessFlowDefinition",
+  "definitions": {
+    "ProcessFlowDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "resourcePools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "capacity": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "initialAvailable": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "capacity"
+            ],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "source"
+                  },
+                  "entityType": {
+                    "type": "string",
+                    "default": "entity"
+                  },
+                  "startAtSec": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 0
+                  },
+                  "intervalSec": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "scheduleAtSec": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "maxArrivals": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "attributes": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    },
+                    "default": {}
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "queue"
+                  },
+                  "capacity": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "discipline": {
+                    "type": "string",
+                    "enum": [
+                      "fifo",
+                      "lifo"
+                    ],
+                    "default": "fifo"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "delay"
+                  },
+                  "durationSec": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "durationSec"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "service"
+                  },
+                  "resourcePoolId": {
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "default": 1
+                  },
+                  "durationSec": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "queueCapacity": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "resourcePoolId",
+                  "durationSec"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "seize"
+                  },
+                  "resourcePoolId": {
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "default": 1
+                  },
+                  "queueCapacity": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "resourcePoolId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "release"
+                  },
+                  "resourcePoolId": {
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "default": 1
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "resourcePoolId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "selectOutput"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "sink"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "connections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "condition": {
+                "type": "object",
+                "properties": {
+                  "attribute": {
+                    "type": "string"
+                  },
+                  "operator": {
+                    "type": "string",
+                    "enum": [
+                      "equals",
+                      "not-equals"
+                    ],
+                    "default": "equals"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/attributes/additionalProperties"
+                  }
+                },
+                "required": [
+                  "attribute",
+                  "value"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "additionalProperties": false
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "id",
+        "blocks"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

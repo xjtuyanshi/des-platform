@@ -92,6 +92,12 @@ importers:
         specifier: ^7.1.3
         version: 7.3.2(@types/node@24.12.2)(tsx@4.21.0)(yaml@2.8.3)
 
+  packages/des-core:
+    dependencies:
+      '@des-platform/event-queue':
+        specifier: workspace:*
+        version: link:../event-queue
+
   packages/dispatching:
     dependencies:
       '@des-platform/domain-model':
@@ -109,6 +115,18 @@ importers:
 
   packages/event-queue: {}
 
+  packages/model-compiler:
+    dependencies:
+      '@des-platform/des-core':
+        specifier: workspace:*
+        version: link:../des-core
+      '@des-platform/process-flow':
+        specifier: workspace:*
+        version: link:../process-flow
+      '@des-platform/shared-schema':
+        specifier: workspace:*
+        version: link:../shared-schema
+
   packages/motion-layer:
     dependencies:
       '@des-platform/domain-model':
@@ -120,6 +138,15 @@ importers:
       '@dimforge/rapier3d-compat':
         specifier: ^0.17.3
         version: 0.17.3
+
+  packages/process-flow:
+    dependencies:
+      '@des-platform/des-core':
+        specifier: workspace:*
+        version: link:../des-core
+      '@des-platform/shared-schema':
+        specifier: workspace:*
+        version: link:../shared-schema
 
   packages/shared-schema:
     dependencies:

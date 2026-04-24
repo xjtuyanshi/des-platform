@@ -8,11 +8,15 @@ Automotive assembly-line replenishment simulator built as a fresh TypeScript mon
 - runtime-controlled WebSocket live viewer and replay API
 - static HTML reporting
 - JSON Schema output for future agent-authored scenarios
+- schema-first AI-native model DSL for generic Process Flow experiments
 
 ## Workspace Layout
 
 - `packages/shared-schema`: zod schemas, typed interfaces, config loading, JSON Schema generation
+- `packages/des-core`: generic deterministic DES runtime around the event queue
 - `packages/event-queue`: deterministic priority queue ordered by `(time, priority, sequence)`
+- `packages/process-flow`: AI-native Process Flow runtime blocks such as Source, Queue, Delay, Service, Seize, Release, SelectOutput, and Sink
+- `packages/model-compiler`: validates AI-native model DSL and creates executable Process Flow runtimes
 - `packages/domain-model`: stations, bins, AMRs, cars, skids, transport tasks
 - `packages/dispatching`: earliest-completion / nearest-idle dispatch policy
 - `packages/motion-layer`: aisle graph routing + Rapier-backed motion world
@@ -58,6 +62,16 @@ pnpm report:baseline
 pnpm simulate:baseline
 pnpm build
 ```
+
+## AI-Native Modeling Foundation
+
+The first generic modeling surface is a validated DSL under `@des-platform/shared-schema/model-dsl`.
+It is intentionally code/data based instead of drag-and-drop based:
+
+- AI or a user describes a process as blocks, resource pools, and connections.
+- `@des-platform/model-compiler` validates the DSL before runtime.
+- `@des-platform/process-flow` executes the model on `@des-platform/des-core`.
+- Generated JSON Schemas include `process-flow.schema.json` and `model-dsl.schema.json`.
 
 Viewer defaults:
 

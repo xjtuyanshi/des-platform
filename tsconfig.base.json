@@ -21,7 +21,11 @@
     "paths": {
       "@des-platform/shared-schema": ["packages/shared-schema/src/index.ts"],
       "@des-platform/shared-schema/loader": ["packages/shared-schema/src/loader.ts"],
+      "@des-platform/shared-schema/model-dsl": ["packages/shared-schema/src/model-dsl.ts"],
+      "@des-platform/des-core": ["packages/des-core/src/index.ts"],
       "@des-platform/event-queue": ["packages/event-queue/src/index.ts"],
+      "@des-platform/process-flow": ["packages/process-flow/src/index.ts"],
+      "@des-platform/model-compiler": ["packages/model-compiler/src/index.ts"],
       "@des-platform/domain-model": ["packages/domain-model/src/index.ts"],
       "@des-platform/dispatching": ["packages/dispatching/src/index.ts"],
       "@des-platform/motion-layer": ["packages/motion-layer/src/index.ts"],

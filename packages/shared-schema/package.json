@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./layout-factory": "./src/layout-factory.ts",
-    "./loader": "./src/loader.ts"
+    "./loader": "./src/loader.ts",
+    "./model-dsl": "./src/model-dsl.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
