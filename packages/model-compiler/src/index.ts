@@ -1,3 +1,4 @@
+import { createMaterialHandlingRuntime, type MaterialHandlingRuntime } from '@des-platform/material-handling';
 import { createProcessFlowSimulation, runProcessFlow, type ProcessFlowRunResult } from '@des-platform/process-flow';
 import {
   AiNativeDesModelDefinitionSchema,
@@ -9,6 +10,7 @@ export type CompiledDesModel = {
   model: AiNativeDesModelDefinition;
   defaultExperiment: ExperimentDefinition | null;
   createRuntime: () => ProcessFlowRunResult;
+  createMaterialHandlingRuntime: () => MaterialHandlingRuntime | null;
   runExperiment: (experimentId?: string) => ProcessFlowRunResult;
 };
 
@@ -20,6 +22,8 @@ export function compileDesModel(input: unknown): CompiledDesModel {
     model,
     defaultExperiment,
     createRuntime: () => createProcessFlowSimulation(model.process),
+    createMaterialHandlingRuntime: () =>
+      model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
     runExperiment: (experimentId?: string) => {
       const experiment = resolveExperiment(model, experimentId);
       return runProcessFlow(model.process, experiment.stopTimeSec, experiment.maxEvents);

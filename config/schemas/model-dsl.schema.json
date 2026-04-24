@@ -391,6 +391,346 @@
           ],
           "additionalProperties": false
         },
+        "materialHandling": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "units": {
+              "type": "string",
+              "const": "meter",
+              "default": "meter"
+            },
+            "nodes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "z": {
+                    "type": "number"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "point",
+                      "station",
+                      "dock",
+                      "storage",
+                      "home",
+                      "charger",
+                      "conveyor-port"
+                    ],
+                    "default": "point"
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "x",
+                  "z",
+                  "id"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "from": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  },
+                  "bidirectional": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "lengthM": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "speedLimitMps": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "path-guided",
+                      "free-space",
+                      "conveyor"
+                    ],
+                    "default": "path-guided"
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "to"
+                ],
+                "additionalProperties": false
+              },
+              "default": []
+            },
+            "transporterFleets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "vehicleType": {
+                    "type": "string",
+                    "enum": [
+                      "amr",
+                      "agv",
+                      "forklift",
+                      "worker",
+                      "crane"
+                    ],
+                    "default": "amr"
+                  },
+                  "navigation": {
+                    "type": "string",
+                    "enum": [
+                      "path-guided",
+                      "free-space"
+                    ],
+                    "default": "path-guided"
+                  },
+                  "count": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "homeNodeId": {
+                    "type": "string"
+                  },
+                  "speedMps": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "accelerationMps2": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "decelerationMps2": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "lengthM": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "widthM": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "minClearanceM": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 0
+                  }
+                },
+                "required": [
+                  "id",
+                  "count",
+                  "homeNodeId",
+                  "speedMps"
+                ],
+                "additionalProperties": false
+              },
+              "default": []
+            },
+            "storageSystems": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "nodeId": {
+                    "type": "string"
+                  },
+                  "capacity": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "slotIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "nodeId",
+                  "capacity"
+                ],
+                "additionalProperties": false
+              },
+              "default": []
+            },
+            "conveyors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "entryNodeId": {
+                    "type": "string"
+                  },
+                  "exitNodeId": {
+                    "type": "string"
+                  },
+                  "lengthM": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "speedMps": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "capacity": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "required": [
+                  "id",
+                  "entryNodeId",
+                  "exitNodeId",
+                  "lengthM",
+                  "speedMps"
+                ],
+                "additionalProperties": false
+              },
+              "default": []
+            },
+            "zones": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "free-space",
+                      "restricted",
+                      "storage",
+                      "traffic-control"
+                    ]
+                  },
+                  "polygon": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "$ref": "#/definitions/AiNativeDesModelDefinition/properties/materialHandling/properties/nodes/items/properties/x"
+                        },
+                        "z": {
+                          "$ref": "#/definitions/AiNativeDesModelDefinition/properties/materialHandling/properties/nodes/items/properties/z"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "z"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 3
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "polygon"
+                ],
+                "additionalProperties": false
+              },
+              "default": []
+            },
+            "obstacles": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "$ref": "#/definitions/AiNativeDesModelDefinition/properties/materialHandling/properties/nodes/items/properties/x"
+                  },
+                  "z": {
+                    "$ref": "#/definitions/AiNativeDesModelDefinition/properties/materialHandling/properties/nodes/items/properties/z"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "widthM": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "depthM": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "heightM": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "default": 1
+                  }
+                },
+                "required": [
+                  "x",
+                  "z",
+                  "id",
+                  "widthM",
+                  "depthM"
+                ],
+                "additionalProperties": false
+              },
+              "default": []
+            }
+          },
+          "required": [
+            "id",
+            "nodes"
+          ],
+          "additionalProperties": false
+        },
         "experiments": {
           "type": "array",
           "items": {

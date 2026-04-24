@@ -115,11 +115,20 @@ importers:
 
   packages/event-queue: {}
 
+  packages/material-handling:
+    dependencies:
+      '@des-platform/shared-schema':
+        specifier: workspace:*
+        version: link:../shared-schema
+
   packages/model-compiler:
     dependencies:
       '@des-platform/des-core':
         specifier: workspace:*
         version: link:../des-core
+      '@des-platform/material-handling':
+        specifier: workspace:*
+        version: link:../material-handling
       '@des-platform/process-flow':
         specifier: workspace:*
         version: link:../process-flow

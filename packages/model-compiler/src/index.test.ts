@@ -21,13 +21,26 @@ describe('model compiler', () => {
           { from: 'service', to: 'sink' }
         ]
       },
+      materialHandling: {
+        id: 'warehouse',
+        nodes: [
+          { id: 'home', type: 'home', x: 0, z: 0 },
+          { id: 'station', type: 'station', x: 6, z: 0 }
+        ],
+        paths: [{ id: 'home-station', from: 'home', to: 'station', lengthM: 6 }],
+        transporterFleets: [{ id: 'amr', count: 1, homeNodeId: 'home', speedMps: 1.5 }],
+        storageSystems: [],
+        conveyors: []
+      },
       experiments: [{ id: 'baseline', stopTimeSec: 30 }]
     };
 
     const compiled = compileDesModel(model);
     const result = compiled.runExperiment('baseline');
+    const materialHandling = compiled.createMaterialHandlingRuntime();
 
     expect(compiled.model.id).toBe('mm1-smoke');
+    expect(materialHandling?.findShortestRoute('home', 'station', 'amr').travelTimeSec).toBe(4);
     expect(result.snapshot.completedEntities).toBe(4);
     expect(result.snapshot.entities.map((entity) => entity.completedAtSec)).toEqual([5, 10, 15, 20]);
   });

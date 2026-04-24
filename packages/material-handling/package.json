@@ -1,5 +1,5 @@
 {
-  "name": "@des-platform/model-compiler",
+  "name": "@des-platform/material-handling",
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",
@@ -10,9 +10,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@des-platform/des-core": "workspace:*",
-    "@des-platform/material-handling": "workspace:*",
-    "@des-platform/process-flow": "workspace:*",
     "@des-platform/shared-schema": "workspace:*"
   }
 }

@@ -25,6 +25,7 @@
       "@des-platform/des-core": ["packages/des-core/src/index.ts"],
       "@des-platform/event-queue": ["packages/event-queue/src/index.ts"],
       "@des-platform/process-flow": ["packages/process-flow/src/index.ts"],
+      "@des-platform/material-handling": ["packages/material-handling/src/index.ts"],
       "@des-platform/model-compiler": ["packages/model-compiler/src/index.ts"],
       "@des-platform/domain-model": ["packages/domain-model/src/index.ts"],
       "@des-platform/dispatching": ["packages/dispatching/src/index.ts"],

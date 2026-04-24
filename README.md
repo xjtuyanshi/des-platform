@@ -1,14 +1,16 @@
 # DES Platform
 
-Automotive assembly-line replenishment simulator built as a fresh TypeScript monorepo under `des-platform/`. It replaces the earlier AnyLogic experiments with:
+AI-native discrete-event simulation platform for logistics, manufacturing, warehousing, and material-flow systems. The automotive assembly replenishment model is the first reference scenario, not the product boundary.
+
+The platform is being rebuilt around generic simulation primitives:
 
 - deterministic DES core
-- explicit aisle-graph dispatch + AMR motion layer
+- schema-first model DSL for AI-authored Process Flow and Material Handling models
+- explicit material handling layout, transport, storage, conveyor, and AMR/AGV abstractions
 - React + Three.js 3D viewer
 - runtime-controlled WebSocket live viewer and replay API
 - static HTML reporting
 - JSON Schema output for future agent-authored scenarios
-- schema-first AI-native model DSL for generic Process Flow experiments
 
 ## Workspace Layout
 
@@ -16,11 +18,12 @@ Automotive assembly-line replenishment simulator built as a fresh TypeScript mon
 - `packages/des-core`: generic deterministic DES runtime around the event queue
 - `packages/event-queue`: deterministic priority queue ordered by `(time, priority, sequence)`
 - `packages/process-flow`: AI-native Process Flow runtime blocks such as Source, Queue, Delay, Service, Seize, Release, SelectOutput, and Sink
+- `packages/material-handling`: generic Material Handling runtime for layout networks, transporter fleets, storage, and conveyors
 - `packages/model-compiler`: validates AI-native model DSL and creates executable Process Flow runtimes
 - `packages/domain-model`: stations, bins, AMRs, cars, skids, transport tasks
 - `packages/dispatching`: earliest-completion / nearest-idle dispatch policy
 - `packages/motion-layer`: aisle graph routing + Rapier-backed motion world
-- `packages/simulation-core`: baseline simulation engine and KPI generation
+- `packages/simulation-core`: automotive reference scenario engine and KPI generation
 - `apps/sim-api`: HTTP + WebSocket API for replay/live viewer data
 - `apps/viewer`: React + Three.js factory viewer
 - `apps/reporting`: static report renderer and CLI
@@ -29,9 +32,11 @@ Automotive assembly-line replenishment simulator built as a fresh TypeScript mon
 - `config/schemas`: generated JSON Schema artifacts
 - `output`: generated baseline replay/report/validation artifacts
 
-## Baseline Model
+## Reference Scenario
 
-- 10 serial stations on one paced automotive main line
+The current reference scenario is a 10-station automotive assembly replenishment model:
+
+- 10 serial stations on one paced main line
 - pitch `5.1m`, skid `5.0m`, car `4.6m`, fixed takt `40s`
 - station consumption timing is derived from `layout.lineX / conveyorSpeed`, not `stationIndex * takt`
 - 2-bin line-side replenishment at every station
@@ -69,9 +74,11 @@ The first generic modeling surface is a validated DSL under `@des-platform/share
 It is intentionally code/data based instead of drag-and-drop based:
 
 - AI or a user describes a process as blocks, resource pools, and connections.
+- AI or a user describes a facility as nodes, paths, fleets, storage systems, conveyors, zones, and obstacles.
 - `@des-platform/model-compiler` validates the DSL before runtime.
 - `@des-platform/process-flow` executes the model on `@des-platform/des-core`.
-- Generated JSON Schemas include `process-flow.schema.json` and `model-dsl.schema.json`.
+- `@des-platform/material-handling` provides the first generic material-flow runtime layer.
+- Generated JSON Schemas include `process-flow.schema.json`, `material-handling.schema.json`, and `model-dsl.schema.json`.
 
 Viewer defaults:
 
