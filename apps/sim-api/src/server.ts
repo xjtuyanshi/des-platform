@@ -74,7 +74,7 @@ app.get('/api/des-workbench', (_request: Request, response: Response) => {
 
 app.post('/api/des-studies/inline', async (request: Request, response: Response, next: NextFunction) => {
   try {
-    response.status(201).json(registerGenericInlineStudy(request.body));
+    response.status(201).json(await registerGenericInlineStudy(request.body, { persist: Boolean(request.body?.persist) }));
   } catch (error) {
     next(error);
   }
@@ -177,7 +177,8 @@ app.post('/api/des-runtime/:studyId/start', async (request: Request, response: R
         getStudyParam(request),
         request.body?.speed,
         request.body?.startTimeSec,
-        request.body?.experimentId
+        request.body?.experimentId,
+        request.body?.parameterOverrides
       )
     );
   } catch (error) {
@@ -208,7 +209,8 @@ app.post('/api/des-runtime/:studyId/restart', async (request: Request, response:
         getStudyParam(request),
         request.body?.speed,
         request.body?.startTimeSec,
-        request.body?.experimentId
+        request.body?.experimentId,
+        request.body?.parameterOverrides
       )
     );
   } catch (error) {

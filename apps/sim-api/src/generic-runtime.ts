@@ -1,4 +1,5 @@
 import { readdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,6 +14,7 @@ import { loadAiNativeDesModel, loadSimulationStudyCase } from '@des-platform/sha
 import {
   AiNativeDesModelDefinitionSchema,
   type AiNativeDesModelDefinition,
+  type DslLiteral,
   type ExperimentDefinition
 } from '@des-platform/shared-schema/model-dsl';
 import {
@@ -31,8 +33,25 @@ export type GenericStudyCatalogItem = {
   modelId: string;
   modelName: string;
   experimentIds: string[];
+  experiments: Array<{
+    id: string;
+    name?: string;
+    stopTimeSec: number;
+    parameterOverrides: Record<string, DslLiteral>;
+  }>;
   defaultExperimentId: string | null;
   inlineModel: boolean;
+  parameters: Array<{
+    id: string;
+    name?: string;
+    description: string;
+    valueType: 'number' | 'integer' | 'string' | 'boolean';
+    defaultValue: DslLiteral;
+    min?: number;
+    max?: number;
+    step?: number;
+    unit?: string;
+  }>;
   processBlocks: Array<{
     id: string;
     kind: string;
@@ -58,6 +77,7 @@ export type GenericRuntimeSessionState = {
   startTimeSec: number;
   simTimeSec: number;
   stopTimeSec: number;
+  parameterOverrides: Record<string, DslLiteral>;
   progress: number;
   createdAt: string;
   updatedAt: string;
@@ -107,6 +127,17 @@ function cloneSession(state: GenericRuntimeSessionState | null): GenericRuntimeS
   return state ? structuredClone(state) : null;
 }
 
+function safeStudyFileName(studyId: string): string {
+  return studyId.replace(/[^a-zA-Z0-9_.-]/g, '-');
+}
+
+async function persistStudyToConfig(study: SimulationStudyCaseDefinition): Promise<string> {
+  await mkdir(studiesDir, { recursive: true });
+  const studyPath = path.join(studiesDir, `${safeStudyFileName(study.id)}.study.json`);
+  await writeFile(studyPath, `${JSON.stringify(study, null, 2)}\n`, 'utf8');
+  return studyPath;
+}
+
 function firstStudyExperimentId(study: SimulationStudyCaseDefinition, model: AiNativeDesModelDefinition): string | null {
   return (
     study.runs[0]?.experimentId ??
@@ -125,8 +156,25 @@ function toCatalogItem(bundle: GenericStudyBundle): GenericStudyCatalogItem {
     modelId: bundle.model.id,
     modelName: bundle.model.name,
     experimentIds: bundle.model.experiments.map((experiment) => experiment.id),
+    experiments: bundle.model.experiments.map((experiment) => ({
+      id: experiment.id,
+      name: experiment.name,
+      stopTimeSec: experiment.stopTimeSec,
+      parameterOverrides: { ...experiment.parameterOverrides }
+    })),
     defaultExperimentId: firstStudyExperimentId(bundle.study, bundle.model),
     inlineModel: Boolean(bundle.study.model),
+    parameters: bundle.model.parameters.map((parameter) => ({
+      id: parameter.id,
+      name: parameter.name,
+      description: parameter.description,
+      valueType: parameter.valueType,
+      defaultValue: parameter.defaultValue,
+      min: parameter.min,
+      max: parameter.max,
+      step: parameter.step,
+      unit: parameter.unit
+    })),
     processBlocks: bundle.model.process.blocks.map((block) => ({
       id: block.id,
       kind: block.kind,
@@ -234,6 +282,106 @@ function normalizeInlineStudy(input: unknown): SimulationStudyCaseDefinition {
   return study;
 }
 
+function normalizeParameterOverrides(
+  model: AiNativeDesModelDefinition,
+  input: unknown
+): Record<string, DslLiteral> {
+  if (input === undefined || input === null) {
+    return {};
+  }
+
+  const rawOverrides = asRecord(input);
+  const parametersById = new Map(model.parameters.map((parameter) => [parameter.id, parameter]));
+  const overrides: Record<string, DslLiteral> = {};
+
+  for (const [parameterId, rawValue] of Object.entries(rawOverrides)) {
+    const parameter = parametersById.get(parameterId);
+    if (!parameter) {
+      throw new Error(`Unknown model parameter ${parameterId}`);
+    }
+    overrides[parameterId] = coerceParameterValue(parameter, rawValue);
+  }
+
+  return overrides;
+}
+
+function coerceParameterValue(
+  parameter: AiNativeDesModelDefinition['parameters'][number],
+  rawValue: unknown
+): DslLiteral {
+  let value: DslLiteral;
+
+  switch (parameter.valueType) {
+    case 'number':
+      value = Number(rawValue);
+      if (!Number.isFinite(value)) {
+        throw new Error(`Parameter ${parameter.id} must be a finite number`);
+      }
+      break;
+    case 'integer':
+      value = Number(rawValue);
+      if (!Number.isFinite(value) || !Number.isInteger(value)) {
+        throw new Error(`Parameter ${parameter.id} must be an integer`);
+      }
+      break;
+    case 'boolean':
+      if (typeof rawValue === 'boolean') {
+        value = rawValue;
+      } else if (rawValue === 'true') {
+        value = true;
+      } else if (rawValue === 'false') {
+        value = false;
+      } else {
+        throw new Error(`Parameter ${parameter.id} must be boolean`);
+      }
+      break;
+    case 'string':
+      value = String(rawValue);
+      break;
+    default:
+      parameter.valueType satisfies never;
+      throw new Error(`Unsupported parameter type for ${parameter.id}`);
+  }
+
+  if (typeof value === 'number') {
+    if (parameter.min !== undefined && value < parameter.min) {
+      throw new Error(`Parameter ${parameter.id} must be greater than or equal to ${parameter.min}`);
+    }
+    if (parameter.max !== undefined && value > parameter.max) {
+      throw new Error(`Parameter ${parameter.id} must be less than or equal to ${parameter.max}`);
+    }
+  }
+
+  return value;
+}
+
+function experimentWithParameterOverrides(
+  experiment: ExperimentDefinition,
+  parameterOverrides: Record<string, DslLiteral>
+): ExperimentDefinition {
+  if (Object.keys(parameterOverrides).length === 0) {
+    return experiment;
+  }
+
+  return {
+    ...experiment,
+    parameterOverrides: {
+      ...experiment.parameterOverrides,
+      ...parameterOverrides
+    }
+  };
+}
+
+function modelWithRuntimeExperiment(
+  model: AiNativeDesModelDefinition,
+  experiment: ExperimentDefinition
+): AiNativeDesModelDefinition {
+  return {
+    ...model,
+    experiments: model.experiments.map((candidate) => candidate.id === experiment.id ? experiment : candidate)
+  };
+}
+
 function resolveExperiment(
   bundle: GenericStudyBundle,
   experimentId?: string
@@ -266,7 +414,7 @@ class GenericRuntimeSession {
     startTimeSec: number,
     private readonly emitEvent: (event: GenericRuntimeEvent) => void
   ) {
-    this.runtime = compileDesModel(bundle.model).createRuntimeForExperiment(experiment.id);
+    this.runtime = compileDesModel(modelWithRuntimeExperiment(bundle.model, experiment)).createRuntimeForExperiment(experiment.id);
     this.state = {
       sessionId: `${bundle.study.id}-${Date.now()}`,
       studyId: bundle.study.id,
@@ -279,6 +427,7 @@ class GenericRuntimeSession {
       startTimeSec,
       simTimeSec: 0,
       stopTimeSec: experiment.stopTimeSec,
+      parameterOverrides: { ...experiment.parameterOverrides },
       progress: 0,
       createdAt: this.createdAt,
       updatedAt: this.createdAt,
@@ -464,13 +613,21 @@ class GenericRuntimeController {
     };
   }
 
-  async start(speed?: number, startTimeSec?: number, experimentId?: string): Promise<GenericRuntimeEnvelope> {
+  async start(
+    speed?: number,
+    startTimeSec?: number,
+    experimentId?: string,
+    parameterOverrides?: unknown
+  ): Promise<GenericRuntimeEnvelope> {
     const bundle = await getStudyBundle(this.studyId);
     if (!bundle.diagnostics.valid && bundle.study.failOnValidationError) {
       throw new Error(`Study ${bundle.study.id} cannot start because model diagnostics contain errors`);
     }
 
-    const experiment = resolveExperiment(bundle, experimentId);
+    const experiment = experimentWithParameterOverrides(
+      resolveExperiment(bundle, experimentId),
+      normalizeParameterOverrides(bundle.model, parameterOverrides)
+    );
     const runtimeSpeed = clampSpeed(speed);
     const runtimeStartSec = Math.min(experiment.stopTimeSec, Math.max(0, Number.isFinite(startTimeSec) ? Number(startTimeSec) : 0));
 
@@ -511,8 +668,13 @@ class GenericRuntimeController {
     };
   }
 
-  async restart(speed?: number, startTimeSec?: number, experimentId?: string): Promise<GenericRuntimeEnvelope> {
-    return this.start(speed, startTimeSec, experimentId);
+  async restart(
+    speed?: number,
+    startTimeSec?: number,
+    experimentId?: string,
+    parameterOverrides?: unknown
+  ): Promise<GenericRuntimeEnvelope> {
+    return this.start(speed, startTimeSec, experimentId, parameterOverrides);
   }
 
   async setSpeed(speed: number): Promise<GenericRuntimeEnvelope> {
@@ -570,7 +732,10 @@ export async function getGenericStudyCatalog(): Promise<GenericStudyCatalogItem[
   return [...byId.values()].map(toCatalogItem).sort((left, right) => left.name.localeCompare(right.name));
 }
 
-export function registerGenericInlineStudy(input: unknown): GenericRuntimeEnvelope & { viewerUrl: string } {
+export async function registerGenericInlineStudy(
+  input: unknown,
+  options: { persist?: boolean } = {}
+): Promise<GenericRuntimeEnvelope & { viewerUrl: string; persisted: boolean; studyPath: string | null }> {
   const study = normalizeInlineStudy(input);
   const model = study.model!;
   const bundle: GenericStudyBundle = {
@@ -582,11 +747,14 @@ export function registerGenericInlineStudy(input: unknown): GenericRuntimeEnvelo
   inlineStudyBundles.set(study.id, bundle);
   studyBundleCache.delete(study.id);
   getGenericRuntimeController(study.id).reset(bundle);
+  const studyPath = options.persist ? await persistStudyToConfig(study) : null;
 
   return {
     study: toCatalogItem(bundle),
     session: null,
-    viewerUrl: `/api/des-runtime/${encodeURIComponent(study.id)}/viewer`
+    viewerUrl: `/api/des-runtime/${encodeURIComponent(study.id)}/viewer`,
+    persisted: Boolean(studyPath),
+    studyPath
   };
 }
 
@@ -602,9 +770,10 @@ export async function startGenericRuntime(
   studyId: string,
   speed?: number,
   startTimeSec?: number,
-  experimentId?: string
+  experimentId?: string,
+  parameterOverrides?: unknown
 ): Promise<GenericRuntimeEnvelope> {
-  return getGenericRuntimeController(studyId).start(speed, startTimeSec, experimentId);
+  return getGenericRuntimeController(studyId).start(speed, startTimeSec, experimentId, parameterOverrides);
 }
 
 export async function pauseGenericRuntime(studyId: string): Promise<GenericRuntimeEnvelope> {
@@ -619,9 +788,10 @@ export async function restartGenericRuntime(
   studyId: string,
   speed?: number,
   startTimeSec?: number,
-  experimentId?: string
+  experimentId?: string,
+  parameterOverrides?: unknown
 ): Promise<GenericRuntimeEnvelope> {
-  return getGenericRuntimeController(studyId).restart(speed, startTimeSec, experimentId);
+  return getGenericRuntimeController(studyId).restart(speed, startTimeSec, experimentId, parameterOverrides);
 }
 
 export async function updateGenericRuntimeSpeed(studyId: string, speed: number): Promise<GenericRuntimeEnvelope> {
@@ -829,6 +999,13 @@ export function renderGenericWorkbench(): string {
         align-items: center;
         margin-top: 12px;
       }
+      .persist-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        min-height: 34px;
+      }
       button, select {
         min-height: 34px;
         border: 1px solid var(--line);
@@ -900,6 +1077,7 @@ export function renderGenericWorkbench(): string {
           <div class="toolbar">
             <button class="primary" id="register">Register Case</button>
             <button id="openRuntime" disabled>Open Registered Runtime</button>
+            <label class="persist-option"><input id="persist" type="checkbox" /> Save</label>
           </div>
         </section>
         <section>
@@ -948,7 +1126,7 @@ export function renderGenericWorkbench(): string {
           const response = await fetch('/api/des-studies/inline', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(input)
+            body: JSON.stringify({ study: input, persist: $('persist').checked })
           });
           const data = await response.json();
           if (!response.ok) {
@@ -960,7 +1138,9 @@ export function renderGenericWorkbench(): string {
             registered: data.study.id,
             model: data.study.modelName,
             experiments: data.study.experimentIds,
-            viewerUrl: data.viewerUrl
+            viewerUrl: data.viewerUrl,
+            persisted: data.persisted,
+            studyPath: data.studyPath
           });
           await loadStudies();
           $('study').value = data.study.id;
@@ -1027,6 +1207,44 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         align-items: center;
         gap: 8px;
         margin-top: 12px;
+      }
+      .parameter-panel {
+        display: none;
+        margin-top: 12px;
+        border-top: 1px solid var(--line);
+        padding-top: 12px;
+      }
+      .parameter-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .parameter-control {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 9px;
+      }
+      .parameter-control label {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .parameter-inputs {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 7px;
+      }
+      .parameter-inputs input[type="range"] {
+        flex: 1;
+        min-width: 0;
+      }
+      .parameter-inputs input[type="number"],
+      .parameter-inputs input[type="text"],
+      .parameter-inputs select {
+        width: 112px;
       }
       button, select, input {
         border: 1px solid var(--line);
@@ -1163,6 +1381,7 @@ export function renderGenericRuntimeViewer(studyId: string): string {
       @media (max-width: 900px) {
         .grid { grid-template-columns: 1fr; }
         .verification-grid { grid-template-columns: 1fr; }
+        .parameter-grid { grid-template-columns: 1fr; }
         .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
     </style>
@@ -1179,6 +1398,10 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           <button id="resume">Resume</button>
           <button id="restart">Restart</button>
           <label>Speed <input id="speed" type="number" min="0.25" max="240" step="0.25" value="8" /></label>
+        </div>
+        <div id="parameterPanel" class="parameter-panel">
+          <h2>Parameters</h2>
+          <div id="parameters" class="parameter-grid"></div>
         </div>
         <div class="kpis">
           <div><span>Status</span><strong id="status">idle</strong></div>
@@ -1266,16 +1489,126 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         $('subtitle').textContent = study.description || study.modelName;
         const select = $('experiment');
         select.innerHTML = '';
-        for (const experimentId of study.experimentIds) {
+        for (const experiment of study.experiments ?? []) {
           const option = document.createElement('option');
-          option.value = experimentId;
-          option.textContent = experimentId;
-          option.selected = experimentId === (session?.experimentId ?? study.defaultExperimentId);
+          option.value = experiment.id;
+          option.textContent = experiment.name ? experiment.name + ' (' + experiment.id + ')' : experiment.id;
+          option.selected = experiment.id === (session?.experimentId ?? study.defaultExperimentId);
           select.appendChild(option);
         }
+        renderParameterControls();
         if (session?.latestSnapshot) snapshot = session.latestSnapshot;
         if (session?.recentEvents) recentEvents = session.recentEvents;
         render();
+      }
+
+      function selectedExperiment() {
+        return (study?.experiments ?? []).find((experiment) => experiment.id === $('experiment').value) ?? null;
+      }
+
+      function parameterDisplayName(parameter) {
+        return parameter.name || parameter.id;
+      }
+
+      function parameterValue(parameter) {
+        const experiment = selectedExperiment();
+        const sessionValue = session?.experimentId === experiment?.id ? session?.parameterOverrides?.[parameter.id] : undefined;
+        if (sessionValue !== undefined) return sessionValue;
+        if (experiment?.parameterOverrides?.[parameter.id] !== undefined) return experiment.parameterOverrides[parameter.id];
+        return parameter.defaultValue;
+      }
+
+      function renderParameterControls() {
+        const panel = $('parameterPanel');
+        const box = $('parameters');
+        const parameters = study?.parameters ?? [];
+        box.innerHTML = '';
+        panel.style.display = parameters.length === 0 ? 'none' : 'block';
+        for (const parameter of parameters) {
+          const value = parameterValue(parameter);
+          const wrapper = document.createElement('div');
+          wrapper.className = 'parameter-control';
+
+          const label = document.createElement('label');
+          const name = document.createElement('span');
+          name.textContent = parameterDisplayName(parameter);
+          const unit = document.createElement('span');
+          unit.textContent = parameter.unit || parameter.valueType;
+          label.appendChild(name);
+          label.appendChild(unit);
+          wrapper.appendChild(label);
+
+          const inputs = document.createElement('div');
+          inputs.className = 'parameter-inputs';
+
+          if ((parameter.valueType === 'number' || parameter.valueType === 'integer') && parameter.min !== undefined && parameter.max !== undefined) {
+            const range = document.createElement('input');
+            range.type = 'range';
+            range.min = String(parameter.min);
+            range.max = String(parameter.max);
+            range.step = String(parameter.step ?? (parameter.valueType === 'integer' ? 1 : 0.1));
+            range.value = String(value);
+            range.dataset.paramId = parameter.id;
+            range.dataset.paramType = parameter.valueType;
+
+            const number = document.createElement('input');
+            number.type = 'number';
+            number.min = String(parameter.min);
+            number.max = String(parameter.max);
+            number.step = range.step;
+            number.value = String(value);
+            number.dataset.paramId = parameter.id;
+            number.dataset.paramType = parameter.valueType;
+            range.addEventListener('input', () => { number.value = range.value; });
+            number.addEventListener('input', () => { range.value = number.value; });
+            inputs.appendChild(range);
+            inputs.appendChild(number);
+          } else if (parameter.valueType === 'boolean') {
+            const select = document.createElement('select');
+            select.dataset.paramId = parameter.id;
+            select.dataset.paramType = parameter.valueType;
+            for (const optionValue of ['true', 'false']) {
+              const option = document.createElement('option');
+              option.value = optionValue;
+              option.textContent = optionValue;
+              option.selected = String(value) === optionValue;
+              select.appendChild(option);
+            }
+            inputs.appendChild(select);
+          } else {
+            const input = document.createElement('input');
+            input.type = parameter.valueType === 'string' ? 'text' : 'number';
+            if (parameter.min !== undefined) input.min = String(parameter.min);
+            if (parameter.max !== undefined) input.max = String(parameter.max);
+            if (parameter.step !== undefined) input.step = String(parameter.step);
+            input.value = String(value);
+            input.dataset.paramId = parameter.id;
+            input.dataset.paramType = parameter.valueType;
+            inputs.appendChild(input);
+          }
+
+          wrapper.appendChild(inputs);
+          box.appendChild(wrapper);
+        }
+      }
+
+      function collectParameterOverrides() {
+        const overrides = {};
+        for (const parameter of study?.parameters ?? []) {
+          const input = document.querySelector('[data-param-id="' + CSS.escape(parameter.id) + '"]:not([type="range"])') ??
+            document.querySelector('[data-param-id="' + CSS.escape(parameter.id) + '"]');
+          if (!input) continue;
+          if (parameter.valueType === 'number') {
+            overrides[parameter.id] = Number(input.value);
+          } else if (parameter.valueType === 'integer') {
+            overrides[parameter.id] = Number(input.value);
+          } else if (parameter.valueType === 'boolean') {
+            overrides[parameter.id] = input.value === 'true';
+          } else {
+            overrides[parameter.id] = input.value;
+          }
+        }
+        return overrides;
       }
 
       function connect() {
@@ -1799,15 +2132,18 @@ export function renderGenericRuntimeViewer(studyId: string): string {
 
       $('start').addEventListener('click', () => post('/start', {
         speed: Number($('speed').value),
-        experimentId: $('experiment').value
+        experimentId: $('experiment').value,
+        parameterOverrides: collectParameterOverrides()
       }).then((envelope) => applyMeta(envelope.study, envelope.session)));
       $('pause').addEventListener('click', () => post('/pause').then((envelope) => applyMeta(envelope.study, envelope.session)));
       $('resume').addEventListener('click', () => post('/resume').then((envelope) => applyMeta(envelope.study, envelope.session)));
       $('restart').addEventListener('click', () => post('/restart', {
         speed: Number($('speed').value),
-        experimentId: $('experiment').value
+        experimentId: $('experiment').value,
+        parameterOverrides: collectParameterOverrides()
       }).then((envelope) => applyMeta(envelope.study, envelope.session)));
       $('speed').addEventListener('change', () => post('/speed', { speed: Number($('speed').value) }).catch(console.error));
+      $('experiment').addEventListener('change', () => renderParameterControls());
 
       refreshMeta().catch(console.error);
       connect();
