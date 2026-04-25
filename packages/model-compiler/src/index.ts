@@ -1,4 +1,8 @@
-import { createMaterialHandlingRuntime, type MaterialHandlingRuntime } from '@des-platform/material-handling';
+import {
+  analyzeMaterialHandlingDefinition,
+  createMaterialHandlingRuntime,
+  type MaterialHandlingRuntime
+} from '@des-platform/material-handling';
 import { createProcessFlowSimulation, runProcessFlow, type ProcessFlowRunResult } from '@des-platform/process-flow';
 import {
   AiNativeDesModelDefinitionSchema,
@@ -772,6 +776,15 @@ function analyzeMaterialHandlingSemantics(model: AiNativeDesModelDefinition): Mo
     diagnostics.push(warning('material.unused-layout', 'materialHandling', 'materialHandling is defined but no material handling process blocks use it'));
   }
 
+  diagnostics.push(
+    ...analyzeMaterialHandlingDefinition(model.materialHandling).map((diagnostic) => ({
+      severity: diagnostic.severity,
+      code: diagnostic.code,
+      path: diagnostic.path,
+      message: diagnostic.message
+    }))
+  );
+
   const runtime = createMaterialHandlingRuntime(model.materialHandling);
   for (const block of materialBlocks) {
     if (block.kind !== 'moveByTransporter') {
@@ -838,8 +851,17 @@ function hasUpstreamSeizeOrService(
   return false;
 }
 
-function isMaterialBlock(block: ProcessFlowBlockDefinition): block is Extract<ProcessFlowBlockDefinition, { kind: 'moveByTransporter' | 'store' | 'retrieve' | 'convey' }> {
-  return block.kind === 'moveByTransporter' || block.kind === 'store' || block.kind === 'retrieve' || block.kind === 'convey';
+function isMaterialBlock(
+  block: ProcessFlowBlockDefinition
+): block is Extract<ProcessFlowBlockDefinition, { kind: 'moveByTransporter' | 'pickup' | 'dropoff' | 'store' | 'retrieve' | 'convey' }> {
+  return (
+    block.kind === 'moveByTransporter' ||
+    block.kind === 'pickup' ||
+    block.kind === 'dropoff' ||
+    block.kind === 'store' ||
+    block.kind === 'retrieve' ||
+    block.kind === 'convey'
+  );
 }
 
 function error(code: string, path: string, message: string): ModelDiagnostic {

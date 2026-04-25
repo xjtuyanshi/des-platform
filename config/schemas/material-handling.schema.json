@@ -37,6 +37,7 @@
                   "dock",
                   "storage",
                   "home",
+                  "parking",
                   "charger",
                   "conveyor-port"
                 ],
@@ -149,6 +150,21 @@
               },
               "homeNodeId": {
                 "type": "string"
+              },
+              "parkingNodeId": {
+                "type": "string"
+              },
+              "chargerNodeId": {
+                "type": "string"
+              },
+              "idlePolicy": {
+                "type": "string",
+                "enum": [
+                  "stay",
+                  "return-home",
+                  "return-parking"
+                ],
+                "default": "stay"
               },
               "speedMps": {
                 "type": "number",

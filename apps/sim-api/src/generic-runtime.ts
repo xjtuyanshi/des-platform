@@ -9,6 +9,11 @@ import {
   type GenericDesRuntime,
   type ModelDiagnosticsReport
 } from '@des-platform/model-compiler';
+import {
+  verifyMaterialHandlingMotion,
+  type MaterialMotionVerificationOptions,
+  type MaterialMotionVerificationSnapshot
+} from '@des-platform/motion-layer';
 import type { ProcessFlowSnapshot } from '@des-platform/process-flow';
 import { loadAiNativeDesModel, loadSimulationStudyCase } from '@des-platform/shared-schema/loader';
 import {
@@ -65,6 +70,10 @@ export type GenericStudyCatalogItem = {
   }>;
 };
 
+type GenericRuntimeSnapshot = ProcessFlowSnapshot & {
+  motionVerification?: MaterialMotionVerificationSnapshot;
+};
+
 export type GenericRuntimeSessionState = {
   sessionId: string;
   studyId: string;
@@ -78,10 +87,12 @@ export type GenericRuntimeSessionState = {
   simTimeSec: number;
   stopTimeSec: number;
   parameterOverrides: Record<string, DslLiteral>;
+  effectiveParameterValues: Record<string, DslLiteral>;
+  motionVerificationOptions: Required<MaterialMotionVerificationOptions>;
   progress: number;
   createdAt: string;
   updatedAt: string;
-  latestSnapshot: ProcessFlowSnapshot | null;
+  latestSnapshot: GenericRuntimeSnapshot | null;
   recentEvents: GenericDesRuntime['simulation']['eventLog'];
   diagnostics: ModelDiagnosticsReport;
   error: string | null;
@@ -99,7 +110,7 @@ export type GenericRuntimeEvent =
       type: 'generic-runtime-snapshot';
       studyId: string;
       sessionId: string;
-      snapshot: ProcessFlowSnapshot;
+      snapshot: GenericRuntimeSnapshot;
       status: GenericRuntimeSessionState['status'];
       speed: number;
       progress: number;
@@ -121,6 +132,19 @@ const runtimeControllers = new Map<string, GenericRuntimeController>();
 function clampSpeed(speed: number | undefined, fallback = 8): number {
   const next = Number.isFinite(speed) ? Number(speed) : fallback;
   return Math.min(240, Math.max(0.25, next));
+}
+
+function normalizeMotionVerificationOptions(
+  studyId: string,
+  input?: MaterialMotionVerificationOptions
+): Required<MaterialMotionVerificationOptions> {
+  const defaultEnabled = studyId === 'micro-fulfillment-inline' || studyId === 'fulfillment-center-mvp';
+  return {
+    enabled: input?.enabled ?? defaultEnabled,
+    tickSec: Number.isFinite(input?.tickSec) ? Math.max(0.05, Number(input?.tickSec)) : 0.2,
+    clearanceM: Number.isFinite(input?.clearanceM) ? Math.max(0, Number(input?.clearanceM)) : 0.25,
+    maxLagSec: Number.isFinite(input?.maxLagSec) ? Math.max(0, Number(input?.maxLagSec)) : 2
+  };
 }
 
 function cloneSession(state: GenericRuntimeSessionState | null): GenericRuntimeSessionState | null {
@@ -372,6 +396,18 @@ function experimentWithParameterOverrides(
   };
 }
 
+function effectiveParameterValues(
+  model: AiNativeDesModelDefinition,
+  experiment: ExperimentDefinition
+): Record<string, DslLiteral> {
+  return Object.fromEntries(
+    model.parameters.map((parameter) => [
+      parameter.id,
+      experiment.parameterOverrides[parameter.id] ?? parameter.defaultValue
+    ])
+  );
+}
+
 function modelWithRuntimeExperiment(
   model: AiNativeDesModelDefinition,
   experiment: ExperimentDefinition
@@ -412,6 +448,7 @@ class GenericRuntimeSession {
     experiment: ExperimentDefinition,
     speed: number,
     startTimeSec: number,
+    motionVerificationOptions: Required<MaterialMotionVerificationOptions>,
     private readonly emitEvent: (event: GenericRuntimeEvent) => void
   ) {
     this.runtime = compileDesModel(modelWithRuntimeExperiment(bundle.model, experiment)).createRuntimeForExperiment(experiment.id);
@@ -428,14 +465,17 @@ class GenericRuntimeSession {
       simTimeSec: 0,
       stopTimeSec: experiment.stopTimeSec,
       parameterOverrides: { ...experiment.parameterOverrides },
+      effectiveParameterValues: effectiveParameterValues(bundle.model, experiment),
+      motionVerificationOptions,
       progress: 0,
       createdAt: this.createdAt,
       updatedAt: this.createdAt,
-      latestSnapshot: this.runtime.runtime.getSnapshot(0),
+      latestSnapshot: null,
       recentEvents: [],
       diagnostics: bundle.diagnostics,
       error: null
     };
+    this.state.latestSnapshot = this.snapshotAt(0);
   }
 
   getState(): GenericRuntimeSessionState {
@@ -448,7 +488,7 @@ class GenericRuntimeSession {
       if (this.state.startTimeSec > 0) {
         this.advanceTo(this.state.startTimeSec, false);
       } else {
-        this.emitSnapshot(this.runtime.runtime.getSnapshot(this.runtime.simulation.nowSec));
+        this.emitSnapshot(this.snapshotAt(this.runtime.simulation.nowSec));
       }
       return this.resume();
     } catch (error) {
@@ -523,7 +563,7 @@ class GenericRuntimeSession {
       untilSec: cappedTargetSec,
       maxEvents: this.runtime.experiment.maxEvents
     });
-    const snapshot = this.runtime.runtime.getSnapshot(this.runtime.simulation.nowSec);
+    const snapshot = this.snapshotAt(this.runtime.simulation.nowSec);
     this.state.latestSnapshot = snapshot;
     this.state.recentEvents = this.runtime.simulation.eventLog.slice(-80);
     this.state.simTimeSec = snapshot.nowSec;
@@ -558,7 +598,7 @@ class GenericRuntimeSession {
     });
   }
 
-  private emitSnapshot(snapshot: ProcessFlowSnapshot): void {
+  private emitSnapshot(snapshot: GenericRuntimeSnapshot): void {
     this.emitEvent({
       type: 'generic-runtime-snapshot',
       studyId: this.bundle.study.id,
@@ -573,6 +613,18 @@ class GenericRuntimeSession {
 
   private touch(): void {
     this.state.updatedAt = new Date().toISOString();
+  }
+
+  private snapshotAt(nowSec: number): GenericRuntimeSnapshot {
+    const snapshot = this.runtime.runtime.getSnapshot(nowSec) as GenericRuntimeSnapshot;
+    snapshot.motionVerification = verifyMaterialHandlingMotion({
+      model: this.runtime.model,
+      snapshot: snapshot.materialHandling,
+      activeTransports: snapshot.activeTransports,
+      nowSec,
+      options: this.state?.motionVerificationOptions
+    });
+    return snapshot;
   }
 
   private clearTimer(): void {
@@ -617,7 +669,8 @@ class GenericRuntimeController {
     speed?: number,
     startTimeSec?: number,
     experimentId?: string,
-    parameterOverrides?: unknown
+    parameterOverrides?: unknown,
+    motionVerification?: MaterialMotionVerificationOptions
   ): Promise<GenericRuntimeEnvelope> {
     const bundle = await getStudyBundle(this.studyId);
     if (!bundle.diagnostics.valid && bundle.study.failOnValidationError) {
@@ -632,7 +685,14 @@ class GenericRuntimeController {
     const runtimeStartSec = Math.min(experiment.stopTimeSec, Math.max(0, Number.isFinite(startTimeSec) ? Number(startTimeSec) : 0));
 
     this.session?.close();
-    const session = new GenericRuntimeSession(bundle, experiment, runtimeSpeed, runtimeStartSec, (event) => this.broadcast(event));
+    const session = new GenericRuntimeSession(
+      bundle,
+      experiment,
+      runtimeSpeed,
+      runtimeStartSec,
+      normalizeMotionVerificationOptions(bundle.study.id, motionVerification),
+      (event) => this.broadcast(event)
+    );
     this.session = session;
 
     this.broadcast({
@@ -672,9 +732,10 @@ class GenericRuntimeController {
     speed?: number,
     startTimeSec?: number,
     experimentId?: string,
-    parameterOverrides?: unknown
+    parameterOverrides?: unknown,
+    motionVerification?: MaterialMotionVerificationOptions
   ): Promise<GenericRuntimeEnvelope> {
-    return this.start(speed, startTimeSec, experimentId, parameterOverrides);
+    return this.start(speed, startTimeSec, experimentId, parameterOverrides, motionVerification);
   }
 
   async setSpeed(speed: number): Promise<GenericRuntimeEnvelope> {
@@ -771,9 +832,10 @@ export async function startGenericRuntime(
   speed?: number,
   startTimeSec?: number,
   experimentId?: string,
-  parameterOverrides?: unknown
+  parameterOverrides?: unknown,
+  motionVerification?: MaterialMotionVerificationOptions
 ): Promise<GenericRuntimeEnvelope> {
-  return getGenericRuntimeController(studyId).start(speed, startTimeSec, experimentId, parameterOverrides);
+  return getGenericRuntimeController(studyId).start(speed, startTimeSec, experimentId, parameterOverrides, motionVerification);
 }
 
 export async function pauseGenericRuntime(studyId: string): Promise<GenericRuntimeEnvelope> {
@@ -789,9 +851,10 @@ export async function restartGenericRuntime(
   speed?: number,
   startTimeSec?: number,
   experimentId?: string,
-  parameterOverrides?: unknown
+  parameterOverrides?: unknown,
+  motionVerification?: MaterialMotionVerificationOptions
 ): Promise<GenericRuntimeEnvelope> {
-  return getGenericRuntimeController(studyId).restart(speed, startTimeSec, experimentId, parameterOverrides);
+  return getGenericRuntimeController(studyId).restart(speed, startTimeSec, experimentId, parameterOverrides, motionVerification);
 }
 
 export async function updateGenericRuntimeSpeed(studyId: string, speed: number): Promise<GenericRuntimeEnvelope> {
@@ -1028,6 +1091,46 @@ export function renderGenericWorkbench(): string {
         grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.6fr);
         gap: 12px;
       }
+      .builder {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(260px, 0.45fr);
+        gap: 12px;
+      }
+      .brief-text {
+        min-height: 130px;
+        font: 13px/1.45 Inter, "Avenir Next", "Segoe UI", sans-serif;
+      }
+      .tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .tabs button.active {
+        background: var(--ink);
+        color: #fff;
+        border-color: var(--ink);
+      }
+      .diagnostic-list {
+        display: grid;
+        gap: 7px;
+      }
+      .diagnostic {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px;
+        background: #fff;
+      }
+      .diagnostic strong {
+        display: block;
+        font-size: 12px;
+      }
+      .diagnostic button {
+        min-height: 26px;
+        margin-top: 6px;
+        font-size: 12px;
+        padding: 3px 7px;
+      }
       textarea {
         width: 100%;
         min-height: 660px;
@@ -1056,6 +1159,7 @@ export function renderGenericWorkbench(): string {
         background: #fff7f7;
       }
       @media (max-width: 920px) {
+        .builder { grid-template-columns: 1fr; }
         .workbench { grid-template-columns: 1fr; }
         textarea { min-height: 520px; }
       }
@@ -1070,6 +1174,29 @@ export function renderGenericWorkbench(): string {
           <button id="openSelected">Open Runtime</button>
         </div>
       </header>
+      <section>
+        <h2>Case Builder</h2>
+        <div class="builder">
+          <div>
+            <textarea id="briefText" class="brief-text" spellcheck="false">Warehouse order picking: orders arrive every minute, an AMR moves totes from dock to rack, a picker works at the rack, then the AMR moves totes to packing. Run for 30 minutes.</textarea>
+            <div class="toolbar">
+              <button class="primary" id="draft">Draft From Brief</button>
+              <button id="diagnose">Diagnose</button>
+              <button id="repair">Repair Draft</button>
+            </div>
+          </div>
+          <div>
+            <div class="tabs">
+              <button class="active" data-tab="summary">Summary</button>
+              <button data-tab="process">Process</button>
+              <button data-tab="layout">Layout</button>
+              <button data-tab="experiments">Experiments</button>
+              <button data-tab="diagnostics">Diagnostics</button>
+            </div>
+            <pre id="tabView">No draft loaded.</pre>
+          </div>
+        </div>
+      </section>
       <div class="workbench">
         <section>
           <h2>Case JSON</h2>
@@ -1090,6 +1217,8 @@ export function renderGenericWorkbench(): string {
       const initialCase = ${encodedDefaultCase};
       const $ = (id) => document.getElementById(id);
       let lastViewerUrl = null;
+      let lastDiagnostics = [];
+      let activeTab = 'summary';
 
       function viewerUrlFor(studyId) {
         return '/api/des-runtime/' + encodeURIComponent(studyId) + '/viewer';
@@ -1099,6 +1228,110 @@ export function renderGenericWorkbench(): string {
         const result = $('result');
         result.className = error ? 'error' : '';
         result.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+      }
+
+      function currentCase() {
+        return JSON.parse($('caseText').value);
+      }
+
+      function setCase(study) {
+        $('caseText').value = JSON.stringify(study, null, 2);
+      }
+
+      function tabPayload(study) {
+        const model = study?.model ?? {};
+        if (activeTab === 'process') {
+          return {
+            resourcePools: model.process?.resourcePools ?? [],
+            blocks: model.process?.blocks ?? [],
+            connections: model.process?.connections ?? []
+          };
+        }
+        if (activeTab === 'layout') {
+          return model.materialHandling ?? null;
+        }
+        if (activeTab === 'experiments') {
+          return {
+            parameters: model.parameters ?? [],
+            experiments: model.experiments ?? [],
+            runs: study?.runs ?? []
+          };
+        }
+        if (activeTab === 'diagnostics') {
+          return lastDiagnostics;
+        }
+        return {
+          id: study?.id,
+          name: study?.name,
+          model: model.name,
+          blocks: model.process?.blocks?.length ?? 0,
+          nodes: model.materialHandling?.nodes?.length ?? 0,
+          fleets: model.materialHandling?.transporterFleets?.length ?? 0,
+          experiments: model.experiments?.map((experiment) => experiment.id) ?? []
+        };
+      }
+
+      function renderTabs() {
+        document.querySelectorAll('[data-tab]').forEach((button) => {
+          button.classList.toggle('active', button.dataset.tab === activeTab);
+        });
+        try {
+          const study = currentCase();
+          if (activeTab === 'diagnostics') {
+            const box = $('tabView');
+            box.innerHTML = '';
+            const list = document.createElement('div');
+            list.className = 'diagnostic-list';
+            if (lastDiagnostics.length === 0) {
+              list.textContent = 'No diagnostics.';
+            }
+            for (const diagnostic of lastDiagnostics) {
+              const item = document.createElement('div');
+              item.className = 'diagnostic';
+              const title = document.createElement('strong');
+              title.textContent = diagnostic.severity + ' / ' + diagnostic.code;
+              const body = document.createElement('small');
+              body.textContent = diagnostic.path + ' - ' + diagnostic.message;
+              const jump = document.createElement('button');
+              jump.textContent = 'Locate';
+              jump.addEventListener('click', () => locatePath(diagnostic.path));
+              item.appendChild(title);
+              item.appendChild(body);
+              item.appendChild(jump);
+              list.appendChild(item);
+            }
+            box.appendChild(list);
+            return;
+          }
+          $('tabView').textContent = JSON.stringify(tabPayload(study), null, 2);
+        } catch (error) {
+          $('tabView').textContent = error instanceof Error ? error.message : String(error);
+        }
+      }
+
+      function locatePath(path) {
+        const text = $('caseText');
+        const key = String(path).split('.').filter((part) => part && part !== '$').at(-1);
+        if (!key) {
+          text.focus();
+          return;
+        }
+        const index = text.value.indexOf('"' + key + '"');
+        text.focus();
+        if (index >= 0) text.setSelectionRange(index, index + key.length + 2);
+      }
+
+      async function postJson(url, body) {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || JSON.stringify(data));
+        }
+        return data;
       }
 
       async function loadStudies() {
@@ -1117,6 +1350,48 @@ export function renderGenericWorkbench(): string {
       }
 
       $('caseText').value = initialCase;
+      renderTabs();
+      document.querySelectorAll('[data-tab]').forEach((button) => {
+        button.addEventListener('click', () => {
+          activeTab = button.dataset.tab;
+          renderTabs();
+        });
+      });
+      $('draft').addEventListener('click', async () => {
+        try {
+          const data = await postJson('/api/des-author/draft', { brief: $('briefText').value, provider: 'auto' });
+          if (data.study) setCase(data.study);
+          lastDiagnostics = data.diagnostics ?? [];
+          activeTab = data.valid ? 'summary' : 'diagnostics';
+          renderTabs();
+          setResult({ provider: data.provider, valid: data.valid, notes: data.notes, diagnostics: lastDiagnostics.length });
+        } catch (error) {
+          setResult(error instanceof Error ? error.message : String(error), true);
+        }
+      });
+      $('diagnose').addEventListener('click', async () => {
+        try {
+          const data = await postJson('/api/des-author/diagnose', { study: currentCase() });
+          lastDiagnostics = data.diagnostics ?? [];
+          activeTab = 'diagnostics';
+          renderTabs();
+          setResult({ valid: data.valid, schemaValid: data.schemaValid, modelValid: data.modelValid, diagnostics: lastDiagnostics.length });
+        } catch (error) {
+          setResult(error instanceof Error ? error.message : String(error), true);
+        }
+      });
+      $('repair').addEventListener('click', async () => {
+        try {
+          const data = await postJson('/api/des-author/repair', { study: currentCase(), brief: $('briefText').value });
+          if (data.study) setCase(data.study);
+          lastDiagnostics = data.diagnostics ?? [];
+          activeTab = data.valid ? 'summary' : 'diagnostics';
+          renderTabs();
+          setResult({ repaired: data.repaired, valid: data.valid, notes: data.notes, diagnostics: lastDiagnostics.length });
+        } catch (error) {
+          setResult(error instanceof Error ? error.message : String(error), true);
+        }
+      });
       $('openSelected').addEventListener('click', () => {
         if ($('study').value) location.href = viewerUrlFor($('study').value);
       });
@@ -1398,6 +1673,7 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           <button id="resume">Resume</button>
           <button id="restart">Restart</button>
           <label>Speed <input id="speed" type="number" min="0.25" max="240" step="0.25" value="8" /></label>
+          <label><input id="motionEnabled" type="checkbox" checked /> Motion verify</label>
         </div>
         <div id="parameterPanel" class="parameter-panel">
           <h2>Parameters</h2>
@@ -1443,6 +1719,23 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           <article class="state-card">
             <h3>Active Entities</h3>
             <table id="entities"></table>
+          </article>
+          <article class="state-card">
+            <h3>Motion Verification</h3>
+            <table id="motion"></table>
+          </article>
+        </div>
+      </section>
+      <section class="verification-panel">
+        <h2>Statistics</h2>
+        <div class="verification-grid">
+          <article class="state-card">
+            <h3>Run KPIs</h3>
+            <table id="stats"></table>
+          </article>
+          <article class="state-card">
+            <h3>Effective Parameters</h3>
+            <table id="effectiveParams"></table>
           </article>
         </div>
       </section>
@@ -1609,6 +1902,15 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           }
         }
         return overrides;
+      }
+
+      function motionVerificationOptions() {
+        return {
+          enabled: $('motionEnabled').checked,
+          tickSec: 0.2,
+          clearanceM: 0.25,
+          maxLagSec: 2
+        };
       }
 
       function connect() {
@@ -1907,6 +2209,58 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           ]),
           'No active entities'
         );
+
+        const motion = snapshot?.motionVerification;
+        const warningCount = motion?.warnings?.length ?? 0;
+        setTableRows(
+          'motion',
+          ['Unit', 'State', 'Sep', 'Warnings', 'Lag'],
+          (motion?.units ?? []).map((unit) => [
+            unit.unitId,
+            unit.avoidanceStatus + ' / ' + unit.status,
+            unit.minSeparationM === null ? '-' : rounded(unit.minSeparationM) + 'm',
+            warningCount,
+            rounded(unit.lagSec) + 's'
+          ]),
+          motion?.enabled === false ? 'Motion verification disabled' : 'No motion state'
+        );
+      }
+
+      function renderStatistics() {
+        const nowSec = snapshot?.nowSec ?? 0;
+        const entities = snapshot?.entities ?? [];
+        const completed = entities.filter((entity) => entity.completedAtSec !== null);
+        const cycleTimes = completed.map((entity) => entity.completedAtSec - entity.createdAtSec);
+        const avgCycle = cycleTimes.length === 0 ? 0 : cycleTimes.reduce((sum, value) => sum + value, 0) / cycleTimes.length;
+        const throughputPerHour = nowSec <= 0 ? 0 : completed.length / nowSec * 3600;
+        const wip = entities.length - completed.length;
+        const resourceUtil = (snapshot?.resourcePools ?? []).length === 0 ? 0 :
+          (snapshot.resourcePools.reduce((sum, pool) => sum + pool.utilization, 0) / snapshot.resourcePools.length);
+        const fleetUtil = (snapshot?.transporterFleetStats ?? []).length === 0 ? 0 :
+          (snapshot.transporterFleetStats.reduce((sum, fleet) => sum + fleet.utilization, 0) / snapshot.transporterFleetStats.length);
+        const trafficWait = (snapshot?.transporterFleetStats ?? []).reduce((sum, fleet) => sum + fleet.totalTrafficWaitTimeSec, 0);
+        setTableRows(
+          'stats',
+          ['Metric', 'Value'],
+          [
+            ['Throughput', rounded(throughputPerHour) + '/h'],
+            ['WIP', wip],
+            ['Average cycle', rounded(avgCycle) + 's'],
+            ['Completion ratio', entities.length === 0 ? '0%' : percent(completed.length / entities.length)],
+            ['Resource util', percent(resourceUtil)],
+            ['AMR util', percent(fleetUtil)],
+            ['Traffic wait', rounded(trafficWait) + 's']
+          ],
+          'No statistics'
+        );
+
+        const params = session?.effectiveParameterValues ?? {};
+        setTableRows(
+          'effectiveParams',
+          ['Parameter', 'Value'],
+          Object.entries(params).map(([key, value]) => [key, value]),
+          'No model parameters'
+        );
       }
 
       function renderLogic() {
@@ -2127,20 +2481,23 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         renderLayout();
         renderLogic();
         renderVerification();
+        renderStatistics();
         renderEvents();
       }
 
       $('start').addEventListener('click', () => post('/start', {
         speed: Number($('speed').value),
         experimentId: $('experiment').value,
-        parameterOverrides: collectParameterOverrides()
+        parameterOverrides: collectParameterOverrides(),
+        motionVerification: motionVerificationOptions()
       }).then((envelope) => applyMeta(envelope.study, envelope.session)));
       $('pause').addEventListener('click', () => post('/pause').then((envelope) => applyMeta(envelope.study, envelope.session)));
       $('resume').addEventListener('click', () => post('/resume').then((envelope) => applyMeta(envelope.study, envelope.session)));
       $('restart').addEventListener('click', () => post('/restart', {
         speed: Number($('speed').value),
         experimentId: $('experiment').value,
-        parameterOverrides: collectParameterOverrides()
+        parameterOverrides: collectParameterOverrides(),
+        motionVerification: motionVerificationOptions()
       }).then((envelope) => applyMeta(envelope.study, envelope.session)));
       $('speed').addEventListener('change', () => post('/speed', { speed: Number($('speed').value) }).catch(console.error));
       $('experiment').addEventListener('change', () => renderParameterControls());

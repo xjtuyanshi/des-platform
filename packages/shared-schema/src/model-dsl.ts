@@ -205,7 +205,7 @@ export const MhCoordinate2Schema = z.object({
 
 export const MaterialNodeDefinitionSchema = MhCoordinate2Schema.extend({
   id: z.string(),
-  type: z.enum(['point', 'station', 'dock', 'storage', 'home', 'charger', 'conveyor-port']).default('point'),
+  type: z.enum(['point', 'station', 'dock', 'storage', 'home', 'parking', 'charger', 'conveyor-port']).default('point'),
   label: z.string().optional()
 });
 
@@ -241,6 +241,9 @@ export const TransporterFleetDefinitionSchema = z.object({
   navigation: z.enum(['path-guided', 'free-space']).default('path-guided'),
   count: z.number().int().positive(),
   homeNodeId: z.string(),
+  parkingNodeId: z.string().optional(),
+  chargerNodeId: z.string().optional(),
+  idlePolicy: z.enum(['stay', 'return-home', 'return-parking']).default('stay'),
   speedMps: z.number().positive(),
   accelerationMps2: z.number().positive().optional(),
   decelerationMps2: z.number().positive().optional(),
@@ -326,6 +329,27 @@ export const MaterialHandlingDefinitionSchema = z.object({
         message: `Transporter fleet ${fleet.id} references unknown home node ${fleet.homeNodeId}`
       });
     }
+    if (fleet.parkingNodeId && !nodeIds.has(fleet.parkingNodeId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['transporterFleets', fleet.id, 'parkingNodeId'],
+        message: `Transporter fleet ${fleet.id} references unknown parking node ${fleet.parkingNodeId}`
+      });
+    }
+    if (fleet.chargerNodeId && !nodeIds.has(fleet.chargerNodeId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['transporterFleets', fleet.id, 'chargerNodeId'],
+        message: `Transporter fleet ${fleet.id} references unknown charger node ${fleet.chargerNodeId}`
+      });
+    }
+    if (fleet.idlePolicy === 'return-parking' && !fleet.parkingNodeId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['transporterFleets', fleet.id, 'idlePolicy'],
+        message: `Transporter fleet ${fleet.id} idlePolicy return-parking requires parkingNodeId`
+      });
+    }
   }
 
   for (const storage of materialHandling.storageSystems) {
@@ -390,6 +414,32 @@ export const DelayBlockDefinitionSchema = BlockBaseSchema.extend({
   durationSec: TimeValueDefinitionSchema
 });
 
+export const HoldBlockDefinitionSchema = BlockBaseSchema.extend({
+  kind: z.literal('hold'),
+  durationSec: TimeValueDefinitionSchema.optional(),
+  untilSec: z.number().nonnegative().optional(),
+  signalId: z.string().optional(),
+  queueCapacity: z.number().int().positive().optional()
+});
+
+export const SignalBlockDefinitionSchema = BlockBaseSchema.extend({
+  kind: z.literal('signal'),
+  signalId: z.string()
+});
+
+export const BatchBlockDefinitionSchema = BlockBaseSchema.extend({
+  kind: z.literal('batch'),
+  batchSize: z.number().int().positive().default(2),
+  batchIdAttribute: z.string().default('batchId'),
+  batchSizeAttribute: z.string().default('batchSize')
+});
+
+export const UnbatchBlockDefinitionSchema = BlockBaseSchema.extend({
+  kind: z.literal('unbatch'),
+  batchIdAttribute: z.string().default('batchId'),
+  batchSizeAttribute: z.string().default('batchSize')
+});
+
 export const ServiceBlockDefinitionSchema = BlockBaseSchema.extend({
   kind: z.literal('service'),
   resourcePoolId: z.string(),
@@ -433,6 +483,20 @@ export const MoveByTransporterBlockDefinitionSchema = BlockBaseSchema.extend({
   unloadTimeSec: TimeValueDefinitionSchema.default(0)
 });
 
+export const PickupBlockDefinitionSchema = BlockBaseSchema.extend({
+  kind: z.literal('pickup'),
+  nodeId: z.string(),
+  itemIdAttribute: z.string().optional(),
+  loadTimeSec: TimeValueDefinitionSchema.default(0)
+});
+
+export const DropoffBlockDefinitionSchema = BlockBaseSchema.extend({
+  kind: z.literal('dropoff'),
+  nodeId: z.string(),
+  itemIdAttribute: z.string().optional(),
+  unloadTimeSec: TimeValueDefinitionSchema.default(0)
+});
+
 export const StoreBlockDefinitionSchema = BlockBaseSchema.extend({
   kind: z.literal('store'),
   storageId: z.string(),
@@ -454,6 +518,10 @@ export const ProcessFlowBlockDefinitionSchema = z.discriminatedUnion('kind', [
   SourceBlockDefinitionSchema,
   QueueBlockDefinitionSchema,
   DelayBlockDefinitionSchema,
+  HoldBlockDefinitionSchema,
+  SignalBlockDefinitionSchema,
+  BatchBlockDefinitionSchema,
+  UnbatchBlockDefinitionSchema,
   ServiceBlockDefinitionSchema,
   SeizeBlockDefinitionSchema,
   ReleaseBlockDefinitionSchema,
@@ -461,6 +529,8 @@ export const ProcessFlowBlockDefinitionSchema = z.discriminatedUnion('kind', [
   SelectOutputBlockDefinitionSchema,
   SinkBlockDefinitionSchema,
   MoveByTransporterBlockDefinitionSchema,
+  PickupBlockDefinitionSchema,
+  DropoffBlockDefinitionSchema,
   StoreBlockDefinitionSchema,
   RetrieveBlockDefinitionSchema,
   ConveyBlockDefinitionSchema
@@ -507,6 +577,14 @@ export const ProcessFlowDefinitionSchema = z.object({
           message: `Source ${block.id} intervalSec must be able to advance simulation time`
         });
       }
+    }
+
+    if (block.kind === 'hold' && block.durationSec === undefined && block.untilSec === undefined && block.signalId === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['blocks', block.id],
+        message: `Hold ${block.id} must define durationSec, untilSec, or signalId`
+      });
     }
   }
 
@@ -642,7 +720,12 @@ export const AiNativeDesModelDefinitionSchema = z.object({
   }
 
   const materialBlocks = model.process.blocks.filter((block) =>
-    block.kind === 'moveByTransporter' || block.kind === 'store' || block.kind === 'retrieve' || block.kind === 'convey'
+    block.kind === 'moveByTransporter' ||
+    block.kind === 'pickup' ||
+    block.kind === 'dropoff' ||
+    block.kind === 'store' ||
+    block.kind === 'retrieve' ||
+    block.kind === 'convey'
   );
 
   if (materialBlocks.length > 0 && !model.materialHandling) {
@@ -688,6 +771,14 @@ export const AiNativeDesModelDefinitionSchema = z.object({
       }
     }
 
+    if ((block.kind === 'pickup' || block.kind === 'dropoff') && !nodeIds.has(block.nodeId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['process', 'blocks', block.id, 'nodeId'],
+        message: `${block.kind} block ${block.id} references unknown node ${block.nodeId}`
+      });
+    }
+
     if ((block.kind === 'store' || block.kind === 'retrieve') && !storageIds.has(block.storageId)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -724,12 +815,18 @@ export type MaterialHandlingDefinition = z.infer<typeof MaterialHandlingDefiniti
 export type SourceBlockDefinition = z.infer<typeof SourceBlockDefinitionSchema>;
 export type QueueBlockDefinition = z.infer<typeof QueueBlockDefinitionSchema>;
 export type DelayBlockDefinition = z.infer<typeof DelayBlockDefinitionSchema>;
+export type HoldBlockDefinition = z.infer<typeof HoldBlockDefinitionSchema>;
+export type SignalBlockDefinition = z.infer<typeof SignalBlockDefinitionSchema>;
+export type BatchBlockDefinition = z.infer<typeof BatchBlockDefinitionSchema>;
+export type UnbatchBlockDefinition = z.infer<typeof UnbatchBlockDefinitionSchema>;
 export type ServiceBlockDefinition = z.infer<typeof ServiceBlockDefinitionSchema>;
 export type SeizeBlockDefinition = z.infer<typeof SeizeBlockDefinitionSchema>;
 export type ReleaseBlockDefinition = z.infer<typeof ReleaseBlockDefinitionSchema>;
 export type SelectOutputBlockDefinition = z.infer<typeof SelectOutputBlockDefinitionSchema>;
 export type SinkBlockDefinition = z.infer<typeof SinkBlockDefinitionSchema>;
 export type MoveByTransporterBlockDefinition = z.infer<typeof MoveByTransporterBlockDefinitionSchema>;
+export type PickupBlockDefinition = z.infer<typeof PickupBlockDefinitionSchema>;
+export type DropoffBlockDefinition = z.infer<typeof DropoffBlockDefinitionSchema>;
 export type StoreBlockDefinition = z.infer<typeof StoreBlockDefinitionSchema>;
 export type RetrieveBlockDefinition = z.infer<typeof RetrieveBlockDefinitionSchema>;
 export type ConveyBlockDefinition = z.infer<typeof ConveyBlockDefinitionSchema>;

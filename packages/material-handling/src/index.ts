@@ -99,6 +99,13 @@ export type PathReservationState = {
   }>;
 };
 
+export type MaterialHandlingDiagnostic = {
+  severity: 'warning' | 'error';
+  code: string;
+  path: string;
+  message: string;
+};
+
 function distance2d(left: MaterialNodeDefinition, right: MaterialNodeDefinition): number {
   return Math.hypot(right.x - left.x, right.z - left.z);
 }
@@ -456,7 +463,7 @@ export class MaterialHandlingRuntime {
         id,
         fleetId: fleet.id,
         status: 'idle',
-        currentNodeId: fleet.homeNodeId,
+        currentNodeId: fleet.parkingNodeId ?? fleet.homeNodeId,
         assignedEntityId: null
       });
     }
@@ -553,4 +560,43 @@ export class MaterialHandlingRuntime {
 
 export function createMaterialHandlingRuntime(definition: MaterialHandlingDefinition): MaterialHandlingRuntime {
   return new MaterialHandlingRuntime(definition);
+}
+
+export function analyzeMaterialHandlingDefinition(definition: MaterialHandlingDefinition): MaterialHandlingDiagnostic[] {
+  const parsed = MaterialHandlingDefinitionSchema.parse(definition);
+  const diagnostics: MaterialHandlingDiagnostic[] = [];
+  const directedPairs = new Map<string, string[]>();
+
+  for (const path of parsed.paths) {
+    const forwardKey = `${path.from}->${path.to}`;
+    directedPairs.set(forwardKey, [...(directedPairs.get(forwardKey) ?? []), path.id]);
+    if (path.bidirectional) {
+      const reverseKey = `${path.to}->${path.from}`;
+      directedPairs.set(reverseKey, [...(directedPairs.get(reverseKey) ?? []), path.id]);
+    }
+  }
+
+  for (const [pair, pathIds] of directedPairs.entries()) {
+    if (pathIds.length > 1) {
+      diagnostics.push({
+        severity: 'warning',
+        code: 'material.parallel-paths',
+        path: 'materialHandling.paths',
+        message: `Multiple paths serve ${pair}: ${pathIds.join(', ')}. Confirm this is intentional capacity, not duplicate aisle data.`
+      });
+    }
+  }
+
+  for (const path of parsed.paths) {
+    if (path.trafficControl === 'reservation' && path.capacity > 1 && path.mode !== 'free-space') {
+      diagnostics.push({
+        severity: 'warning',
+        code: 'material.multi-capacity-aisle',
+        path: `materialHandling.paths.${path.id}.capacity`,
+        message: `Path ${path.id} allows ${path.capacity} simultaneous transporters; verify aisle width and traffic rule.`
+      });
+    }
+  }
+
+  return diagnostics;
 }

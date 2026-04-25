@@ -50,6 +50,9 @@ importers:
       '@des-platform/model-compiler':
         specifier: workspace:*
         version: link:../../packages/model-compiler
+      '@des-platform/motion-layer':
+        specifier: workspace:*
+        version: link:../../packages/motion-layer
       '@des-platform/process-flow':
         specifier: workspace:*
         version: link:../../packages/process-flow

@@ -376,6 +376,137 @@
                       },
                       "kind": {
                         "type": "string",
+                        "const": "hold"
+                      },
+                      "durationSec": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/intervalSec"
+                      },
+                      "untilSec": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "signalId": {
+                        "type": "string"
+                      },
+                      "queueCapacity": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                      },
+                      "label": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                      },
+                      "description": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "signal"
+                      },
+                      "signalId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "signalId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                      },
+                      "label": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                      },
+                      "description": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "batch"
+                      },
+                      "batchSize": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "default": 2
+                      },
+                      "batchIdAttribute": {
+                        "type": "string",
+                        "default": "batchId"
+                      },
+                      "batchSizeAttribute": {
+                        "type": "string",
+                        "default": "batchSize"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                      },
+                      "label": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                      },
+                      "description": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "unbatch"
+                      },
+                      "batchIdAttribute": {
+                        "type": "string",
+                        "default": "batchId"
+                      },
+                      "batchSizeAttribute": {
+                        "type": "string",
+                        "default": "batchSize"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                      },
+                      "label": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                      },
+                      "description": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                      },
+                      "kind": {
+                        "type": "string",
                         "const": "service"
                       },
                       "resourcePoolId": {
@@ -603,6 +734,74 @@
                       },
                       "kind": {
                         "type": "string",
+                        "const": "pickup"
+                      },
+                      "nodeId": {
+                        "type": "string"
+                      },
+                      "itemIdAttribute": {
+                        "type": "string"
+                      },
+                      "loadTimeSec": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/intervalSec",
+                        "default": 0
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "nodeId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                      },
+                      "label": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                      },
+                      "description": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "dropoff"
+                      },
+                      "nodeId": {
+                        "type": "string"
+                      },
+                      "itemIdAttribute": {
+                        "type": "string"
+                      },
+                      "unloadTimeSec": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/intervalSec",
+                        "default": 0
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "nodeId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                      },
+                      "label": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                      },
+                      "description": {
+                        "$ref": "#/definitions/AiNativeDesModelDefinition/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                      },
+                      "kind": {
+                        "type": "string",
                         "const": "store"
                       },
                       "storageId": {
@@ -776,6 +975,7 @@
                       "dock",
                       "storage",
                       "home",
+                      "parking",
                       "charger",
                       "conveyor-port"
                     ],
@@ -888,6 +1088,21 @@
                   },
                   "homeNodeId": {
                     "type": "string"
+                  },
+                  "parkingNodeId": {
+                    "type": "string"
+                  },
+                  "chargerNodeId": {
+                    "type": "string"
+                  },
+                  "idlePolicy": {
+                    "type": "string",
+                    "enum": [
+                      "stay",
+                      "return-home",
+                      "return-parking"
+                    ],
+                    "default": "stay"
                   },
                   "speedMps": {
                     "type": "number",

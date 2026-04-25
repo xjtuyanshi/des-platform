@@ -1,6 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat/rapier.es.js';
 import type { AMR } from '@des-platform/domain-model';
 import type { LayoutDefinition } from '@des-platform/shared-schema';
+import type { AiNativeDesModelDefinition, MaterialHandlingDefinition } from '@des-platform/shared-schema/model-dsl';
 
 type Point2 = {
   x: number;
@@ -53,6 +54,70 @@ export type RouteProgress = {
   destinationNodeId: string | null;
   nodeIds: string[];
   remainingDistanceM: number;
+};
+
+type MaterialSnapshotLike = {
+  nodes: Array<{ id: string; x: number; z: number }>;
+  transporterUnits: Array<{ id: string; fleetId: string; status: string; currentNodeId: string; assignedEntityId: string | null }>;
+  obstacles: MaterialHandlingDefinition['obstacles'];
+};
+
+type ActiveTransportLike = {
+  transporterUnitId: string;
+  fleetId: string;
+  entityId: string;
+  blockId: string;
+  endSec: number;
+  emptyRouteNodeIds: string[];
+  emptyTravelStartSec: number;
+  emptyTravelEndSec: number;
+  loadStartSec: number;
+  loadEndSec: number;
+  loadedRouteNodeIds: string[];
+  loadedTravelStartSec: number;
+  loadedTravelEndSec: number;
+  unloadStartSec: number;
+  unloadEndSec: number;
+  loadedToNodeId: string;
+};
+
+export type MaterialMotionVerificationOptions = {
+  enabled?: boolean;
+  tickSec?: number;
+  clearanceM?: number;
+  maxLagSec?: number;
+};
+
+export type MaterialMotionVerificationUnit = {
+  unitId: string;
+  fleetId: string;
+  entityId: string | null;
+  x: number;
+  z: number;
+  status: 'idle' | 'moving' | 'waiting' | 'loading' | 'unloading';
+  targetNodeId: string | null;
+  speedMps: number;
+  minSeparationM: number | null;
+  avoidanceStatus: 'clear' | 'near-miss' | 'blocked' | 'waiting';
+  desEtaSec: number | null;
+  physicsEtaSec: number | null;
+  lagSec: number;
+};
+
+export type MaterialMotionVerificationWarning = {
+  code: string;
+  severity: 'warning' | 'error';
+  unitId?: string;
+  message: string;
+};
+
+export type MaterialMotionVerificationSnapshot = {
+  enabled: boolean;
+  tickSec: number;
+  clearanceM: number;
+  maxLagSec: number;
+  units: MaterialMotionVerificationUnit[];
+  warnings: MaterialMotionVerificationWarning[];
 };
 
 const FREE_SPACE_GRID_STEP_M = 0.8;
@@ -837,4 +902,209 @@ export class MotionWorld {
 
     return node;
   }
+}
+
+export function verifyMaterialHandlingMotion(input: {
+  model: AiNativeDesModelDefinition;
+  snapshot: MaterialSnapshotLike | null;
+  activeTransports: ActiveTransportLike[];
+  nowSec: number;
+  options?: MaterialMotionVerificationOptions;
+}): MaterialMotionVerificationSnapshot {
+  const options = {
+    enabled: input.options?.enabled ?? true,
+    tickSec: input.options?.tickSec ?? 0.2,
+    clearanceM: input.options?.clearanceM ?? 0.25,
+    maxLagSec: input.options?.maxLagSec ?? 2
+  };
+  if (!options.enabled || !input.snapshot || !input.model.materialHandling) {
+    return { ...options, enabled: false, units: [], warnings: [] };
+  }
+
+  const materialSnapshot = input.snapshot;
+  const nodesById = new Map(materialSnapshot.nodes.map((node) => [node.id, node]));
+  const fleetsById = new Map(input.model.materialHandling.transporterFleets.map((fleet) => [fleet.id, fleet]));
+  const activeByUnitId = new Map(input.activeTransports.map((transport) => [transport.transporterUnitId, transport]));
+  const warnings: MaterialMotionVerificationWarning[] = [];
+  const units = materialSnapshot.transporterUnits.map((unit) => {
+    const transport = activeByUnitId.get(unit.id);
+    const fleet = fleetsById.get(unit.fleetId);
+    const fleetSpeed = fleet?.speedMps ?? 1;
+    const phase = transport ? materialTransportPhase(transport, input.nowSec) : 'idle';
+    const routeNodeIds = transport
+      ? (phase === 'moving' && input.nowSec < transport.emptyTravelEndSec ? transport.emptyRouteNodeIds : transport.loadedRouteNodeIds)
+      : [unit.currentNodeId];
+    const point = transport
+      ? materialTransportPoint(transport, input.nowSec, nodesById) ?? nodesById.get(unit.currentNodeId) ?? { x: 0, z: 0 }
+      : nodesById.get(unit.currentNodeId) ?? { x: 0, z: 0 };
+    const remainingDistanceM = transport ? remainingRouteDistance(point, routeNodeIds, nodesById) : 0;
+    const physicsEtaSec = transport && phase === 'moving' ? input.nowSec + remainingDistanceM / Math.max(0.001, fleetSpeed) : null;
+    const desEtaSec = transport ? transport.endSec : null;
+    const lagSec = physicsEtaSec !== null && desEtaSec !== null ? physicsEtaSec - desEtaSec : 0;
+    const targetNodeId = transport ? routeNodeIds.at(-1) ?? transport.loadedToNodeId : null;
+    const verificationUnit: MaterialMotionVerificationUnit = {
+      unitId: unit.id,
+      fleetId: unit.fleetId,
+      entityId: transport?.entityId ?? unit.assignedEntityId,
+      x: point.x,
+      z: point.z,
+      status: phase,
+      targetNodeId,
+      speedMps: phase === 'moving' ? fleetSpeed : 0,
+      minSeparationM: null,
+      avoidanceStatus: phase === 'waiting' ? 'waiting' : 'clear',
+      desEtaSec,
+      physicsEtaSec,
+      lagSec
+    };
+
+    if (lagSec > options.maxLagSec) {
+      warnings.push({
+        code: 'motion.eta-lag',
+        severity: 'warning',
+        unitId: unit.id,
+        message: `Physics ETA for ${unit.id} lags DES completion by ${lagSec.toFixed(1)}s.`
+      });
+    }
+    if (transport && routeCrossesObstacle(routeNodeIds, nodesById, materialSnapshot.obstacles, options.clearanceM)) {
+      warnings.push({
+        code: 'motion.static-obstacle-route',
+        severity: 'warning',
+        unitId: unit.id,
+        message: `Route for ${unit.id} intersects an obstacle clearance envelope.`
+      });
+      verificationUnit.avoidanceStatus = 'blocked';
+    }
+
+    return verificationUnit;
+  });
+
+  for (let leftIndex = 0; leftIndex < units.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < units.length; rightIndex += 1) {
+      const left = units[leftIndex]!;
+      const right = units[rightIndex]!;
+      const leftFleet = fleetsById.get(left.fleetId);
+      const rightFleet = fleetsById.get(right.fleetId);
+      const minDistance = Math.max(
+        MIN_DYNAMIC_SEPARATION_M,
+        (Math.max(leftFleet?.lengthM ?? 1, leftFleet?.widthM ?? 1) + Math.max(rightFleet?.lengthM ?? 1, rightFleet?.widthM ?? 1)) / 2 +
+          options.clearanceM
+      );
+      const separation = Math.hypot(left.x - right.x, left.z - right.z);
+      left.minSeparationM = left.minSeparationM === null ? separation : Math.min(left.minSeparationM, separation);
+      right.minSeparationM = right.minSeparationM === null ? separation : Math.min(right.minSeparationM, separation);
+      if (separation < minDistance) {
+        left.avoidanceStatus = 'near-miss';
+        right.avoidanceStatus = 'near-miss';
+        warnings.push({
+          code: 'motion.dynamic-separation',
+          severity: 'warning',
+          message: `${left.unitId} and ${right.unitId} are ${separation.toFixed(2)}m apart, below ${minDistance.toFixed(2)}m.`
+        });
+      }
+    }
+  }
+
+  return {
+    ...options,
+    enabled: true,
+    units,
+    warnings
+  };
+}
+
+function materialTransportPhase(transport: ActiveTransportLike, nowSec: number): MaterialMotionVerificationUnit['status'] {
+  if (nowSec < transport.emptyTravelStartSec) return 'waiting';
+  if (nowSec < transport.emptyTravelEndSec) return 'moving';
+  if (nowSec < transport.loadEndSec) return 'loading';
+  if (nowSec < transport.loadedTravelStartSec) return 'waiting';
+  if (nowSec < transport.loadedTravelEndSec) return 'moving';
+  if (nowSec < transport.unloadEndSec) return 'unloading';
+  return 'idle';
+}
+
+function materialTransportPoint(
+  transport: ActiveTransportLike,
+  nowSec: number,
+  nodesById: Map<string, Point2>
+): Point2 | null {
+  if (nowSec < transport.emptyTravelEndSec && transport.emptyTravelEndSec > transport.emptyTravelStartSec) {
+    return interpolateNodeRoute(transport.emptyRouteNodeIds, (nowSec - transport.emptyTravelStartSec) / (transport.emptyTravelEndSec - transport.emptyTravelStartSec), nodesById);
+  }
+  if (nowSec < transport.loadedTravelStartSec) {
+    return nodesById.get(transport.emptyRouteNodeIds.at(-1) ?? '') ?? null;
+  }
+  if (nowSec < transport.loadedTravelEndSec && transport.loadedTravelEndSec > transport.loadedTravelStartSec) {
+    return interpolateNodeRoute(transport.loadedRouteNodeIds, (nowSec - transport.loadedTravelStartSec) / (transport.loadedTravelEndSec - transport.loadedTravelStartSec), nodesById);
+  }
+  return nodesById.get(transport.loadedToNodeId) ?? null;
+}
+
+function interpolateNodeRoute(routeNodeIds: string[], progress: number, nodesById: Map<string, Point2>): Point2 | null {
+  const points = routeNodeIds.map((id) => nodesById.get(id)).filter((point): point is Point2 => Boolean(point));
+  if (points.length === 0) return null;
+  if (points.length === 1) return points[0]!;
+  const lengths = points.slice(0, -1).map((point, index) => distance2d(point, points[index + 1]!));
+  const total = lengths.reduce((sum, value) => sum + value, 0);
+  let remaining = Math.max(0, Math.min(1, progress)) * total;
+  for (let index = 0; index < lengths.length; index += 1) {
+    const length = lengths[index]!;
+    if (remaining <= length || index === lengths.length - 1) {
+      const from = points[index]!;
+      const to = points[index + 1]!;
+      const local = length <= 0 ? 1 : remaining / length;
+      return { x: from.x + (to.x - from.x) * local, z: from.z + (to.z - from.z) * local };
+    }
+    remaining -= length;
+  }
+  return points.at(-1) ?? null;
+}
+
+function remainingRouteDistance(point: Point2, routeNodeIds: string[], nodesById: Map<string, Point2>): number {
+  const points = routeNodeIds.map((id) => nodesById.get(id)).filter((candidate): candidate is Point2 => Boolean(candidate));
+  if (points.length === 0) return 0;
+  let closestIndex = 0;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (const [index, candidate] of points.entries()) {
+    const distance = distance2d(point, candidate);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestIndex = index;
+    }
+  }
+  let distance = closestDistance;
+  for (let index = closestIndex; index < points.length - 1; index += 1) {
+    distance += distance2d(points[index]!, points[index + 1]!);
+  }
+  return distance;
+}
+
+function routeCrossesObstacle(
+  routeNodeIds: string[],
+  nodesById: Map<string, Point2>,
+  obstacles: MaterialHandlingDefinition['obstacles'],
+  clearanceM: number
+): boolean {
+  const points = routeNodeIds.map((id) => nodesById.get(id)).filter((point): point is Point2 => Boolean(point));
+  for (let index = 0; index < points.length - 1; index += 1) {
+    for (const obstacle of obstacles) {
+      const rect = inflatedRect({ x: obstacle.x, z: obstacle.z, width: obstacle.widthM, depth: obstacle.depthM }, clearanceM);
+      if (segmentIntersectsRect(points[index]!, points[index + 1]!, rect)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function segmentIntersectsRect(from: Point2, to: Point2, rect: RectObstacle): boolean {
+  const samples = 24;
+  for (let index = 0; index <= samples; index += 1) {
+    const t = index / samples;
+    const point = { x: from.x + (to.x - from.x) * t, z: from.z + (to.z - from.z) * t };
+    if (point.x >= rect.minX && point.x <= rect.maxX && point.z >= rect.minZ && point.z <= rect.maxZ) {
+      return true;
+    }
+  }
+  return false;
 }

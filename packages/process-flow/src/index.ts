@@ -17,6 +17,13 @@ const ENTITY_ENTER_EVENT = 'process.entity.enter';
 const SERVICE_COMPLETE_EVENT = 'process.service.complete';
 const TRANSPORT_COMPLETE_EVENT = 'process.material.transport.complete';
 
+type HoldWaitRequest = {
+  entityId: string;
+  blockId: string;
+  signalId: string;
+  queuedAtSec: number;
+};
+
 export type ProcessEntity = {
   id: string;
   type: string;
@@ -235,6 +242,9 @@ export class ProcessFlowRuntime {
   private readonly transporterWaits = new Map<string, TransporterMoveRequest[]>();
   private readonly activeTransports = new Map<string, ActiveTransportState>();
   private readonly transporterFleetStats = new Map<string, RuntimeTransporterFleetMutableStats>();
+  private readonly holdWaitsBySignal = new Map<string, HoldWaitRequest[]>();
+  private readonly batchQueues = new Map<string, string[]>();
+  private readonly batchCounts = new Map<string, number>();
   private attached = false;
 
   constructor(
@@ -466,6 +476,23 @@ export class ProcessFlowRuntime {
         );
         this.incrementCompleted(block.id);
         break;
+      case 'hold':
+        this.handleHoldBlock(sim, block, entity);
+        break;
+      case 'signal':
+        this.releaseSignalWaits(sim, block.signalId);
+        entity.attributes.lastSignalId = block.signalId;
+        this.incrementCompleted(block.id);
+        this.routeFromBlock(sim, block.id, entity);
+        break;
+      case 'batch':
+        this.handleBatchBlock(sim, block, entity);
+        break;
+      case 'unbatch':
+        entity.attributes.lastUnbatchBlockId = block.id;
+        this.incrementCompleted(block.id);
+        this.routeFromBlock(sim, block.id, entity);
+        break;
       case 'service':
         this.enqueueResourceRequest(sim, {
           entityId: entity.id,
@@ -516,6 +543,12 @@ export class ProcessFlowRuntime {
           unloadTimeSec: this.sampleTime(block.unloadTimeSec, `${block.id}.unloadTimeSec`),
           queuedAtSec: sim.nowSec
         });
+        break;
+      case 'pickup':
+        this.handlePickupDropoffBlock(sim, block, entity, block.loadTimeSec, 'pickup');
+        break;
+      case 'dropoff':
+        this.handlePickupDropoffBlock(sim, block, entity, block.unloadTimeSec, 'dropoff');
         break;
       case 'store':
         this.requireMaterialHandling(block.id).store(block.storageId, this.itemIdFor(entity, block.itemIdAttribute));
@@ -587,6 +620,100 @@ export class ProcessFlowRuntime {
     stats.maxQueueLength = Math.max(stats.maxQueueLength, transientLength + 1);
     this.incrementCompleted(block.id);
     this.routeFromBlock(sim, block.id, entity);
+  }
+
+  private handleHoldBlock(
+    sim: DesSimulation<ProcessRuntimeState>,
+    block: Extract<ProcessFlowBlockDefinition, { kind: 'hold' }>,
+    entity: ProcessEntity
+  ): void {
+    if (block.signalId) {
+      const waits = this.holdWaitsBySignal.get(block.signalId) ?? [];
+      if (block.queueCapacity !== undefined && waits.filter((wait) => wait.blockId === block.id).length >= block.queueCapacity) {
+        throw new Error(`Hold queue for block ${block.id} exceeded capacity ${block.queueCapacity}`);
+      }
+      waits.push({
+        entityId: entity.id,
+        blockId: block.id,
+        signalId: block.signalId,
+        queuedAtSec: sim.nowSec
+      });
+      this.holdWaitsBySignal.set(block.signalId, waits);
+      this.requireStats(block.id).maxQueueLength = Math.max(this.requireStats(block.id).maxQueueLength, waits.length);
+      return;
+    }
+
+    const delaySec = block.untilSec !== undefined
+      ? Math.max(0, block.untilSec - sim.nowSec)
+      : this.sampleTime(block.durationSec ?? 0, `${block.id}.durationSec`);
+    sim.scheduleIn(
+      ENTITY_ENTER_EVENT,
+      delaySec,
+      { entityId: entity.id, blockId: this.requireNextConnection(block.id, entity).to },
+      { priority: 50 }
+    );
+    this.incrementCompleted(block.id);
+  }
+
+  private releaseSignalWaits(sim: DesSimulation<ProcessRuntimeState>, signalId: string): void {
+    const waits = this.holdWaitsBySignal.get(signalId) ?? [];
+    this.holdWaitsBySignal.delete(signalId);
+    for (const wait of waits) {
+      const entity = this.requireEntity(wait.entityId);
+      entity.attributes.lastReleasedSignalId = signalId;
+      entity.attributes.lastSignalWaitSec = sim.nowSec - wait.queuedAtSec;
+      this.incrementCompleted(wait.blockId);
+      this.routeFromBlock(sim, wait.blockId, entity);
+    }
+  }
+
+  private handleBatchBlock(
+    sim: DesSimulation<ProcessRuntimeState>,
+    block: Extract<ProcessFlowBlockDefinition, { kind: 'batch' }>,
+    entity: ProcessEntity
+  ): void {
+    const queue = this.batchQueues.get(block.id) ?? [];
+    queue.push(entity.id);
+    this.batchQueues.set(block.id, queue);
+    this.requireStats(block.id).maxQueueLength = Math.max(this.requireStats(block.id).maxQueueLength, queue.length);
+
+    if (queue.length < block.batchSize) {
+      return;
+    }
+
+    const released = queue.splice(0, block.batchSize);
+    const batchCount = (this.batchCounts.get(block.id) ?? 0) + 1;
+    this.batchCounts.set(block.id, batchCount);
+    const batchId = `${block.id}-${batchCount}`;
+    for (const entityId of released) {
+      const batched = this.requireEntity(entityId);
+      batched.attributes[block.batchIdAttribute] = batchId;
+      batched.attributes[block.batchSizeAttribute] = block.batchSize;
+      this.incrementCompleted(block.id);
+      this.routeFromBlock(sim, block.id, batched);
+    }
+  }
+
+  private handlePickupDropoffBlock(
+    sim: DesSimulation<ProcessRuntimeState>,
+    block: Extract<ProcessFlowBlockDefinition, { kind: 'pickup' | 'dropoff' }>,
+    entity: ProcessEntity,
+    durationSec: TimeValueDefinition,
+    mode: 'pickup' | 'dropoff'
+  ): void {
+    this.requireMaterialHandling(block.id);
+    const itemId = this.itemIdFor(entity, block.itemIdAttribute);
+    entity.attributes.locationNodeId = block.nodeId;
+    entity.attributes.lastMaterialAction = mode;
+    entity.attributes.lastMaterialNodeId = block.nodeId;
+    entity.attributes.lastMaterialItemId = itemId;
+    sim.scheduleIn(
+      ENTITY_ENTER_EVENT,
+      this.sampleTime(durationSec, `${block.id}.${mode === 'pickup' ? 'loadTimeSec' : 'unloadTimeSec'}`),
+      { entityId: entity.id, blockId: this.requireNextConnection(block.id, entity).to },
+      { priority: 50 }
+    );
+    this.incrementCompleted(block.id);
   }
 
   private handleServiceComplete(sim: DesSimulation<ProcessRuntimeState>, payload: ServiceCompletePayload): void {

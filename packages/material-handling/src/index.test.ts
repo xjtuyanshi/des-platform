@@ -1,6 +1,6 @@
 import type { MaterialHandlingDefinition } from '@des-platform/shared-schema/model-dsl';
 
-import { calculateTravelProfile, createMaterialHandlingRuntime } from './index.js';
+import { analyzeMaterialHandlingDefinition, calculateTravelProfile, createMaterialHandlingRuntime } from './index.js';
 
 const materialHandling: MaterialHandlingDefinition = {
   id: 'warehouse-material-handling',
@@ -17,7 +17,7 @@ const materialHandling: MaterialHandlingDefinition = {
     { id: 'storage-pack', from: 'storage', to: 'pack', lengthM: 8, mode: 'path-guided', bidirectional: true, trafficControl: 'reservation', capacity: 1 }
   ],
   transporterFleets: [
-    { id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 2, homeNodeId: 'home', speedMps: 1.5, minClearanceM: 0.3 }
+    { id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 2, homeNodeId: 'home', idlePolicy: 'stay', speedMps: 1.5, minClearanceM: 0.3 }
   ],
   storageSystems: [{ id: 'rack-a', nodeId: 'storage', capacity: 2 }],
   conveyors: [{ id: 'pack-out', entryNodeId: 'pack', exitNodeId: 'dock', lengthM: 12, speedMps: 0.5 }],
@@ -60,7 +60,7 @@ describe('MaterialHandlingRuntime', () => {
         { id: 'b', type: 'station', x: 10, z: 0 }
       ],
       paths: [{ id: 'a-b', from: 'a', to: 'b', lengthM: 10, bidirectional: true, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' }],
-      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'a', speedMps: 4, accelerationMps2: 1, decelerationMps2: 1, minClearanceM: 0 }],
+      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'a', idlePolicy: 'stay', speedMps: 4, accelerationMps2: 1, decelerationMps2: 1, minClearanceM: 0 }],
       storageSystems: [],
       conveyors: []
     });
@@ -103,6 +103,28 @@ describe('MaterialHandlingRuntime', () => {
       currentNodeId: 'dock',
       assignedEntityId: null
     });
+  });
+
+  it('starts fleets at parking nodes and reports path conflict diagnostics', () => {
+    const runtime = createMaterialHandlingRuntime({
+      ...materialHandling,
+      nodes: [...materialHandling.nodes, { id: 'parking', type: 'parking', x: -4, z: 0 }],
+      transporterFleets: [
+        { id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'home', parkingNodeId: 'parking', idlePolicy: 'return-parking', speedMps: 1.5, minClearanceM: 0.3 }
+      ]
+    });
+
+    expect(runtime.getSnapshot().transporterUnits[0]?.currentNodeId).toBe('parking');
+
+    const diagnostics = analyzeMaterialHandlingDefinition({
+      ...materialHandling,
+      paths: [
+        ...materialHandling.paths,
+        { id: 'dock-storage-duplicate', from: 'dock', to: 'storage', lengthM: 8, bidirectional: true, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' }
+      ]
+    });
+
+    expect(diagnostics.some((diagnostic) => diagnostic.code === 'material.parallel-paths')).toBe(true);
   });
 
   it('tracks storage occupancy and conveyor travel time', () => {

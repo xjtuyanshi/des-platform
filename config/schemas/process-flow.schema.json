@@ -304,6 +304,137 @@
                   },
                   "kind": {
                     "type": "string",
+                    "const": "hold"
+                  },
+                  "durationSec": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/intervalSec"
+                  },
+                  "untilSec": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "signalId": {
+                    "type": "string"
+                  },
+                  "queueCapacity": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "signal"
+                  },
+                  "signalId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "signalId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "batch"
+                  },
+                  "batchSize": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "default": 2
+                  },
+                  "batchIdAttribute": {
+                    "type": "string",
+                    "default": "batchId"
+                  },
+                  "batchSizeAttribute": {
+                    "type": "string",
+                    "default": "batchSize"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "unbatch"
+                  },
+                  "batchIdAttribute": {
+                    "type": "string",
+                    "default": "batchId"
+                  },
+                  "batchSizeAttribute": {
+                    "type": "string",
+                    "default": "batchSize"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
                     "const": "service"
                   },
                   "resourcePoolId": {
@@ -514,6 +645,74 @@
                   "fleetId",
                   "fromNodeId",
                   "toNodeId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "pickup"
+                  },
+                  "nodeId": {
+                    "type": "string"
+                  },
+                  "itemIdAttribute": {
+                    "type": "string"
+                  },
+                  "loadTimeSec": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/intervalSec",
+                    "default": 0
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "nodeId"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/id"
+                  },
+                  "label": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/label"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/description"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "dropoff"
+                  },
+                  "nodeId": {
+                    "type": "string"
+                  },
+                  "itemIdAttribute": {
+                    "type": "string"
+                  },
+                  "unloadTimeSec": {
+                    "$ref": "#/definitions/ProcessFlowDefinition/properties/blocks/items/anyOf/0/properties/intervalSec",
+                    "default": 0
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "nodeId"
                 ],
                 "additionalProperties": false
               },

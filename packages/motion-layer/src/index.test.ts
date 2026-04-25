@@ -3,8 +3,9 @@ import { fileURLToPath } from 'node:url';
 
 import { AMR } from '@des-platform/domain-model';
 import { loadLayoutDefinition } from '@des-platform/shared-schema/loader';
+import { AiNativeDesModelDefinitionSchema } from '@des-platform/shared-schema/model-dsl';
 
-import { MotionWorld } from './index.js';
+import { MotionWorld, verifyMaterialHandlingMotion } from './index.js';
 
 describe('MotionWorld', () => {
   it('finds a routed path longer than the straight-line distance when obstacles force a bypass', async () => {
@@ -79,5 +80,68 @@ describe('MotionWorld', () => {
 
     expect(minSeparationM).toBeGreaterThanOrEqual(1.54);
     expect(amr1.totalDistanceM + amr2.totalDistanceM).toBeGreaterThan(5);
+  });
+
+  it('flags material handling routes that cross obstacle clearance envelopes', () => {
+    const model = AiNativeDesModelDefinitionSchema.parse({
+      schemaVersion: 'des-platform.v1' as const,
+      id: 'motion-verify',
+      name: 'Motion Verify',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source' as const, scheduleAtSec: [0] },
+          { id: 'sink', kind: 'sink' as const }
+        ],
+        connections: [{ from: 'source', to: 'sink' }]
+      },
+      materialHandling: {
+        id: 'mh',
+        nodes: [
+          { id: 'dock', type: 'dock' as const, x: 0, z: 0 },
+          { id: 'rack', type: 'storage' as const, x: 10, z: 0 }
+        ],
+        paths: [{ id: 'dock-rack', from: 'dock', to: 'rack', lengthM: 10 }],
+        transporterFleets: [{ id: 'amr', count: 2, homeNodeId: 'dock', speedMps: 1, lengthM: 1, widthM: 1 }],
+        obstacles: [{ id: 'column', x: 5, z: 0, widthM: 1, depthM: 1, heightM: 3 }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 20 }]
+    });
+    const materialHandling = model.materialHandling!;
+    const snapshot = {
+      nodes: materialHandling.nodes,
+      transporterUnits: [
+        { id: 'amr-1', fleetId: 'amr', status: 'busy', currentNodeId: 'dock', assignedEntityId: 'source-1' },
+        { id: 'amr-2', fleetId: 'amr', status: 'idle', currentNodeId: 'dock', assignedEntityId: null }
+      ],
+      obstacles: materialHandling.obstacles
+    };
+
+    const verification = verifyMaterialHandlingMotion({
+      model,
+      snapshot,
+      activeTransports: [{
+        transporterUnitId: 'amr-1',
+        fleetId: 'amr',
+        entityId: 'source-1',
+        blockId: 'move',
+        endSec: 10,
+        emptyRouteNodeIds: ['dock'],
+        emptyTravelStartSec: 0,
+        emptyTravelEndSec: 0,
+        loadStartSec: 0,
+        loadEndSec: 0,
+        loadedRouteNodeIds: ['dock', 'rack'],
+        loadedTravelStartSec: 0,
+        loadedTravelEndSec: 10,
+        unloadStartSec: 10,
+        unloadEndSec: 10,
+        loadedToNodeId: 'rack'
+      }],
+      nowSec: 1
+    });
+
+    expect(verification.warnings.some((warning) => warning.code === 'motion.static-obstacle-route')).toBe(true);
+    expect(verification.warnings.some((warning) => warning.code === 'motion.dynamic-separation')).toBe(true);
   });
 });

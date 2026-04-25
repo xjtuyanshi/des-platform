@@ -31,6 +31,7 @@ import {
   subscribeGenericRuntime,
   updateGenericRuntimeSpeed
 } from './generic-runtime.js';
+import { diagnoseDesStudy, draftDesStudy, repairDesStudy } from './authoring.js';
 
 const port = Number(process.env.PORT ?? 8787);
 
@@ -75,6 +76,30 @@ app.get('/api/des-workbench', (_request: Request, response: Response) => {
 app.post('/api/des-studies/inline', async (request: Request, response: Response, next: NextFunction) => {
   try {
     response.status(201).json(await registerGenericInlineStudy(request.body, { persist: Boolean(request.body?.persist) }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/des-author/draft', async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.json(await draftDesStudy(request.body ?? {}));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/des-author/diagnose', async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.json(diagnoseDesStudy(request.body?.study ?? request.body));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/des-author/repair', async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.json(repairDesStudy(request.body ?? {}));
   } catch (error) {
     next(error);
   }
@@ -178,7 +203,8 @@ app.post('/api/des-runtime/:studyId/start', async (request: Request, response: R
         request.body?.speed,
         request.body?.startTimeSec,
         request.body?.experimentId,
-        request.body?.parameterOverrides
+        request.body?.parameterOverrides,
+        request.body?.motionVerification
       )
     );
   } catch (error) {
@@ -210,7 +236,8 @@ app.post('/api/des-runtime/:studyId/restart', async (request: Request, response:
         request.body?.speed,
         request.body?.startTimeSec,
         request.body?.experimentId,
-        request.body?.parameterOverrides
+        request.body?.parameterOverrides,
+        request.body?.motionVerification
       )
     );
   } catch (error) {

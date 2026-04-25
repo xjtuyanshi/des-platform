@@ -121,6 +121,57 @@ describe('ProcessFlowRuntime', () => {
     expect(result.snapshot.resourcePools[0]?.available).toBe(1);
   });
 
+  it('holds entities until a matching signal releases them', () => {
+    const flow: ProcessFlowDefinition = {
+      id: 'hold-signal-flow',
+      resourcePools: [],
+      blocks: [
+        { id: 'job-source', kind: 'source', entityType: 'job', startAtSec: 0, scheduleAtSec: [0], attributes: {} },
+        { id: 'signal-source', kind: 'source', entityType: 'signal', startAtSec: 0, scheduleAtSec: [5], attributes: {} },
+        { id: 'hold', kind: 'hold', signalId: 'release-wave' },
+        { id: 'signal', kind: 'signal', signalId: 'release-wave' },
+        { id: 'job-sink', kind: 'sink' },
+        { id: 'signal-sink', kind: 'sink' }
+      ],
+      connections: [
+        { from: 'job-source', to: 'hold' },
+        { from: 'hold', to: 'job-sink' },
+        { from: 'signal-source', to: 'signal' },
+        { from: 'signal', to: 'signal-sink' }
+      ]
+    };
+
+    const result = runProcessFlow(flow, 10);
+
+    expect(result.snapshot.entities.find((entity) => entity.id === 'job-source-1')?.completedAtSec).toBe(5);
+    expect(result.snapshot.entities.find((entity) => entity.id === 'job-source-1')?.attributes.lastSignalWaitSec).toBe(5);
+  });
+
+  it('releases fixed-size batches together with batch attributes', () => {
+    const flow: ProcessFlowDefinition = {
+      id: 'batch-flow',
+      resourcePools: [],
+      blocks: [
+        { id: 'source', kind: 'source', entityType: 'tote', startAtSec: 0, scheduleAtSec: [0, 1, 2], attributes: {} },
+        { id: 'batch', kind: 'batch', batchSize: 2, batchIdAttribute: 'batchId', batchSizeAttribute: 'batchSize' },
+        { id: 'unbatch', kind: 'unbatch', batchIdAttribute: 'batchId', batchSizeAttribute: 'batchSize' },
+        { id: 'sink', kind: 'sink' }
+      ],
+      connections: [
+        { from: 'source', to: 'batch' },
+        { from: 'batch', to: 'unbatch' },
+        { from: 'unbatch', to: 'sink' }
+      ]
+    };
+
+    const result = runProcessFlow(flow, 10);
+
+    expect(result.snapshot.completedEntities).toBe(2);
+    expect(result.snapshot.entities.slice(0, 2).map((entity) => entity.completedAtSec)).toEqual([1, 1]);
+    expect(result.snapshot.entities[0]?.attributes).toMatchObject({ batchId: 'batch-1', batchSize: 2 });
+    expect(result.snapshot.entities[2]?.completedAtSec).toBeNull();
+  });
+
   it('routes selectOutput blocks by entity attributes with a fallback branch', () => {
     const flow: ProcessFlowDefinition = {
       id: 'select-output',
@@ -210,7 +261,7 @@ describe('ProcessFlowRuntime', () => {
         { id: 'ship', type: 'dock', x: 20, z: 5 }
       ],
       paths: [{ id: 'dock-storage', from: 'dock', to: 'storage', lengthM: 10, speedLimitMps: 2, bidirectional: true, mode: 'path-guided', trafficControl: 'reservation', capacity: 1 }],
-      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'dock', speedMps: 1.5, minClearanceM: 0 }],
+      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'dock', idlePolicy: 'stay', speedMps: 1.5, minClearanceM: 0 }],
       storageSystems: [{ id: 'rack', nodeId: 'storage', capacity: 1 }],
       conveyors: [{ id: 'pack-ship', entryNodeId: 'pack', exitNodeId: 'ship', lengthM: 6, speedMps: 1 }],
       zones: [],
@@ -258,7 +309,7 @@ describe('ProcessFlowRuntime', () => {
         { id: 'rack', type: 'storage', x: 10, z: 0 }
       ],
       paths: [{ id: 'dock-rack', from: 'dock', to: 'rack', lengthM: 10, speedLimitMps: 1, bidirectional: true, mode: 'path-guided', trafficControl: 'reservation', capacity: 1 }],
-      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'dock', speedMps: 1, minClearanceM: 0 }],
+      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'dock', idlePolicy: 'stay', speedMps: 1, minClearanceM: 0 }],
       storageSystems: [],
       conveyors: [],
       zones: [],
@@ -304,7 +355,7 @@ describe('ProcessFlowRuntime', () => {
         { id: 'rack', type: 'storage', x: 10, z: 0 }
       ],
       paths: [{ id: 'dock-rack', from: 'dock', to: 'rack', lengthM: 10, speedLimitMps: 1, bidirectional: true, mode: 'path-guided', trafficControl: 'reservation', capacity: 1 }],
-      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'dock', speedMps: 1, minClearanceM: 0 }],
+      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'dock', idlePolicy: 'stay', speedMps: 1, minClearanceM: 0 }],
       storageSystems: [],
       conveyors: [],
       zones: [],
