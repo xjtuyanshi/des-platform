@@ -161,7 +161,7 @@ export const AiNativeDesLibraryCatalog: AiNativeDesLibraryCatalogDefinition = {
         { id: 'loadTimeSec', type: 'time-value', required: false, description: 'Load time.', unit: 's' },
         { id: 'unloadTimeSec', type: 'time-value', required: false, description: 'Unload time.', unit: 's' }
       ],
-      constraints: ['Requires materialHandling.', 'A route must exist from current vehicle node to pickup and from pickup to dropoff.', 'Path-guided routes use path traffic-control reservations unless a path has trafficControl set to none.'],
+      constraints: ['Requires materialHandling.', 'A route must exist from current vehicle node to pickup and from pickup to dropoff.', 'Path-guided routes use path traffic-control reservations unless a path has trafficControl set to none.', 'Travel time uses min(fleet speed, path speed limit) and optional fleet acceleration/deceleration.'],
       example: { id: 'move-to-pack', kind: 'moveByTransporter', fleetId: 'amr', fromNodeId: 'rack', toNodeId: 'pack', loadTimeSec: 3, unloadTimeSec: 3 }
     },
     {
@@ -211,14 +211,14 @@ export const AiNativeDesLibraryCatalog: AiNativeDesLibraryCatalogDefinition = {
       parameters: [
         { id: 'nodes', type: 'MaterialNode[]', required: true, description: 'Named coordinates for docks, stations, storage, homes, chargers, and conveyor ports.' },
         { id: 'paths', type: 'MaterialPath[]', required: false, description: 'Directed or bidirectional travel links with optional speed limits, trafficControl, and capacity.' },
-        { id: 'transporterFleets', type: 'TransporterFleet[]', required: false, description: 'AMR, AGV, forklift, worker, crane fleets.' },
+        { id: 'transporterFleets', type: 'TransporterFleet[]', required: false, description: 'AMR, AGV, forklift, worker, crane fleets with optional acceleration and deceleration.' },
         { id: 'storageSystems', type: 'StorageSystem[]', required: false, description: 'Capacity-constrained storage at nodes.' },
         { id: 'conveyors', type: 'Conveyor[]', required: false, description: 'Fixed conveyors with length and speed.' },
         { id: 'zones', type: 'MaterialZone[]', required: false, description: 'Free-space, restricted, storage, or traffic-control polygons.' },
         { id: 'obstacles', type: 'MaterialObstacle[]', required: false, description: 'Fixed rectangular obstacles for layout analysis and future motion planning.' }
       ],
-      constraints: ['All references must point to defined node ids.', 'Storage slotIds length must match capacity when slotIds are provided.', 'Path trafficControl defaults to reservation and path capacity defaults to 1.'],
-      example: { id: 'layout', nodes: [{ id: 'dock', type: 'dock', x: 0, z: 0 }], paths: [{ id: 'dock-rack', from: 'dock', to: 'rack', trafficControl: 'reservation', capacity: 1 }], transporterFleets: [{ id: 'amr', count: 2, homeNodeId: 'dock', speedMps: 1.5 }] }
+      constraints: ['All references must point to defined node ids.', 'Storage slotIds length must match capacity when slotIds are provided.', 'Path trafficControl defaults to reservation and path capacity defaults to 1.', 'If accelerationMps2 and decelerationMps2 are present, route timing uses triangular/trapezoidal velocity profiles.'],
+      example: { id: 'layout', nodes: [{ id: 'dock', type: 'dock', x: 0, z: 0 }], paths: [{ id: 'dock-rack', from: 'dock', to: 'rack', trafficControl: 'reservation', capacity: 1 }], transporterFleets: [{ id: 'amr', count: 2, homeNodeId: 'dock', speedMps: 1.5, accelerationMps2: 0.8, decelerationMps2: 0.8 }] }
     },
     {
       id: 'experiment.replication-sweep',

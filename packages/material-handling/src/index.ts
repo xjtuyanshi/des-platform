@@ -15,12 +15,27 @@ export type MaterialRoutePlan = {
   travelTimeSec: number;
 };
 
+export type MaterialTravelProfile = {
+  kind: 'constant-speed' | 'triangular' | 'trapezoidal';
+  distanceM: number;
+  maxSpeedMps: number;
+  peakSpeedMps: number;
+  accelerationMps2: number | null;
+  decelerationMps2: number | null;
+  accelerationTimeSec: number;
+  cruiseTimeSec: number;
+  decelerationTimeSec: number;
+  travelTimeSec: number;
+};
+
 export type MaterialRouteSegmentReservation = {
   pathId: string;
   fromNodeId: string;
   toNodeId: string;
   distanceM: number;
+  maxSpeedMps: number;
   travelTimeSec: number;
+  travelProfile: MaterialTravelProfile;
   requestedStartSec: number;
   startSec: number;
   endSec: number;
@@ -72,7 +87,7 @@ type PathEdge = {
   from: string;
   to: string;
   distanceM: number;
-  speedMps: number | null;
+  speedLimitMps: number | null;
 };
 
 export type PathReservationState = {
@@ -86,6 +101,87 @@ export type PathReservationState = {
 
 function distance2d(left: MaterialNodeDefinition, right: MaterialNodeDefinition): number {
   return Math.hypot(right.x - left.x, right.z - left.z);
+}
+
+export function calculateTravelProfile(
+  distanceM: number,
+  maxSpeedMps: number,
+  accelerationMps2?: number,
+  decelerationMps2?: number
+): MaterialTravelProfile {
+  if (distanceM < 0) {
+    throw new Error(`Travel distance must be nonnegative; received ${distanceM}`);
+  }
+  if (!Number.isFinite(maxSpeedMps) || maxSpeedMps <= 0) {
+    throw new Error(`Travel max speed must be positive; received ${maxSpeedMps}`);
+  }
+
+  if (distanceM === 0) {
+    return {
+      kind: 'constant-speed',
+      distanceM,
+      maxSpeedMps,
+      peakSpeedMps: 0,
+      accelerationMps2: accelerationMps2 ?? null,
+      decelerationMps2: decelerationMps2 ?? null,
+      accelerationTimeSec: 0,
+      cruiseTimeSec: 0,
+      decelerationTimeSec: 0,
+      travelTimeSec: 0
+    };
+  }
+
+  if (!accelerationMps2 || !decelerationMps2) {
+    return {
+      kind: 'constant-speed',
+      distanceM,
+      maxSpeedMps,
+      peakSpeedMps: maxSpeedMps,
+      accelerationMps2: accelerationMps2 ?? null,
+      decelerationMps2: decelerationMps2 ?? null,
+      accelerationTimeSec: 0,
+      cruiseTimeSec: distanceM / maxSpeedMps,
+      decelerationTimeSec: 0,
+      travelTimeSec: distanceM / maxSpeedMps
+    };
+  }
+
+  const accelerationDistanceM = maxSpeedMps ** 2 / (2 * accelerationMps2);
+  const decelerationDistanceM = maxSpeedMps ** 2 / (2 * decelerationMps2);
+  if (accelerationDistanceM + decelerationDistanceM <= distanceM) {
+    const cruiseDistanceM = distanceM - accelerationDistanceM - decelerationDistanceM;
+    const accelerationTimeSec = maxSpeedMps / accelerationMps2;
+    const cruiseTimeSec = cruiseDistanceM / maxSpeedMps;
+    const decelerationTimeSec = maxSpeedMps / decelerationMps2;
+    return {
+      kind: 'trapezoidal',
+      distanceM,
+      maxSpeedMps,
+      peakSpeedMps: maxSpeedMps,
+      accelerationMps2,
+      decelerationMps2,
+      accelerationTimeSec,
+      cruiseTimeSec,
+      decelerationTimeSec,
+      travelTimeSec: accelerationTimeSec + cruiseTimeSec + decelerationTimeSec
+    };
+  }
+
+  const peakSpeedMps = Math.sqrt((2 * distanceM * accelerationMps2 * decelerationMps2) / (accelerationMps2 + decelerationMps2));
+  const accelerationTimeSec = peakSpeedMps / accelerationMps2;
+  const decelerationTimeSec = peakSpeedMps / decelerationMps2;
+  return {
+    kind: 'triangular',
+    distanceM,
+    maxSpeedMps,
+    peakSpeedMps,
+    accelerationMps2,
+    decelerationMps2,
+    accelerationTimeSec,
+    cruiseTimeSec: 0,
+    decelerationTimeSec,
+    travelTimeSec: accelerationTimeSec + decelerationTimeSec
+  };
 }
 
 export class MaterialHandlingRuntime {
@@ -155,7 +251,6 @@ export class MaterialHandlingRuntime {
       };
     }
 
-    const defaultSpeedMps = fleetId ? this.requireFleet(fleetId).speedMps : 1;
     const open = new Set<string>([startNodeId]);
     const cameFrom = new Map<string, { nodeId: string; pathId: string }>();
     const distanceScore = new Map<string, number>([[startNodeId, 0]]);
@@ -173,8 +268,7 @@ export class MaterialHandlingRuntime {
 
       open.delete(currentId);
       for (const edge of this.adjacency.get(currentId) ?? []) {
-        const edgeSpeedMps = edge.speedMps ?? defaultSpeedMps;
-        const edgeTimeSec = edge.distanceM / edgeSpeedMps;
+        const edgeTimeSec = this.calculateEdgeTravel(edge, fleetId).travelTimeSec;
         const tentativeTime = (timeScore.get(currentId) ?? Number.POSITIVE_INFINITY) + edgeTimeSec;
         if (tentativeTime < (timeScore.get(edge.to) ?? Number.POSITIVE_INFINITY)) {
           cameFrom.set(edge.to, { nodeId: currentId, pathId: edge.path.id });
@@ -210,8 +304,8 @@ export class MaterialHandlingRuntime {
       const fromNodeId = route.nodeIds[index]!;
       const toNodeId = route.nodeIds[index + 1]!;
       const edge = this.requireEdge(fromNodeId, toNodeId, route.pathIds[index]!);
-      const speedMps = edge.speedMps ?? (fleetId ? this.requireFleet(fleetId).speedMps : 1);
-      const travelTimeSec = edge.distanceM / speedMps;
+      const travelProfile = this.calculateEdgeTravel(edge, fleetId);
+      const travelTimeSec = travelProfile.travelTimeSec;
       const startSec = this.reservePath(edge.path, currentSec, travelTimeSec);
       const endSec = startSec + travelTimeSec;
       const segmentWaitSec = startSec - currentSec;
@@ -221,7 +315,9 @@ export class MaterialHandlingRuntime {
         fromNodeId,
         toNodeId,
         distanceM: edge.distanceM,
+        maxSpeedMps: travelProfile.maxSpeedMps,
         travelTimeSec,
+        travelProfile,
         requestedStartSec: currentSec,
         startSec,
         endSec,
@@ -311,8 +407,14 @@ export class MaterialHandlingRuntime {
       from,
       to,
       distanceM,
-      speedMps: path.speedLimitMps ?? null
+      speedLimitMps: path.speedLimitMps ?? null
     });
+  }
+
+  private calculateEdgeTravel(edge: PathEdge, fleetId?: string): MaterialTravelProfile {
+    const fleet = fleetId ? this.requireFleet(fleetId) : null;
+    const maxSpeedMps = Math.min(fleet?.speedMps ?? edge.speedLimitMps ?? 1, edge.speedLimitMps ?? Number.POSITIVE_INFINITY);
+    return calculateTravelProfile(edge.distanceM, maxSpeedMps, fleet?.accelerationMps2, fleet?.decelerationMps2);
   }
 
   private reservePath(path: MaterialPathDefinition, requestedStartSec: number, durationSec: number): number {

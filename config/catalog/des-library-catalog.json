@@ -351,7 +351,8 @@
       "constraints": [
         "Requires materialHandling.",
         "A route must exist from current vehicle node to pickup and from pickup to dropoff.",
-        "Path-guided routes use path traffic-control reservations unless a path has trafficControl set to none."
+        "Path-guided routes use path traffic-control reservations unless a path has trafficControl set to none.",
+        "Travel time uses min(fleet speed, path speed limit) and optional fleet acceleration/deceleration."
       ],
       "example": {
         "id": "move-to-pack",
@@ -468,7 +469,7 @@
           "id": "transporterFleets",
           "type": "TransporterFleet[]",
           "required": false,
-          "description": "AMR, AGV, forklift, worker, crane fleets."
+          "description": "AMR, AGV, forklift, worker, crane fleets with optional acceleration and deceleration."
         },
         {
           "id": "storageSystems",
@@ -498,7 +499,8 @@
       "constraints": [
         "All references must point to defined node ids.",
         "Storage slotIds length must match capacity when slotIds are provided.",
-        "Path trafficControl defaults to reservation and path capacity defaults to 1."
+        "Path trafficControl defaults to reservation and path capacity defaults to 1.",
+        "If accelerationMps2 and decelerationMps2 are present, route timing uses triangular/trapezoidal velocity profiles."
       ],
       "example": {
         "id": "layout",
@@ -524,7 +526,9 @@
             "id": "amr",
             "count": 2,
             "homeNodeId": "dock",
-            "speedMps": 1.5
+            "speedMps": 1.5,
+            "accelerationMps2": 0.8,
+            "decelerationMps2": 0.8
           }
         ]
       }

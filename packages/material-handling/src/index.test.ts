@@ -1,6 +1,6 @@
 import type { MaterialHandlingDefinition } from '@des-platform/shared-schema/model-dsl';
 
-import { createMaterialHandlingRuntime } from './index.js';
+import { calculateTravelProfile, createMaterialHandlingRuntime } from './index.js';
 
 const materialHandling: MaterialHandlingDefinition = {
   id: 'warehouse-material-handling',
@@ -26,6 +26,21 @@ const materialHandling: MaterialHandlingDefinition = {
 };
 
 describe('MaterialHandlingRuntime', () => {
+  it('calculates constant, triangular, and trapezoidal travel profiles', () => {
+    expect(calculateTravelProfile(10, 2)).toMatchObject({
+      kind: 'constant-speed',
+      travelTimeSec: 5
+    });
+
+    const triangular = calculateTravelProfile(10, 4, 1, 1);
+    expect(triangular.kind).toBe('triangular');
+    expect(triangular.travelTimeSec).toBeCloseTo(2 * Math.sqrt(10), 5);
+
+    const trapezoidal = calculateTravelProfile(20, 2, 1, 1);
+    expect(trapezoidal.kind).toBe('trapezoidal');
+    expect(trapezoidal.travelTimeSec).toBe(12);
+  });
+
   it('plans shortest routes using path speed limits and fleet speed fallback', () => {
     const runtime = createMaterialHandlingRuntime(materialHandling);
 
@@ -34,7 +49,28 @@ describe('MaterialHandlingRuntime', () => {
     expect(route.nodeIds).toEqual(['home', 'dock', 'storage', 'pack']);
     expect(route.pathIds).toEqual(['home-dock', 'dock-storage', 'storage-pack']);
     expect(route.distanceM).toBe(26);
-    expect(route.travelTimeSec).toBeCloseTo(10 / 2 + 8 / 1 + 8 / 1.5, 5);
+    expect(route.travelTimeSec).toBeCloseTo(10 / 1.5 + 8 / 1 + 8 / 1.5, 5);
+  });
+
+  it('uses fleet acceleration and deceleration in route timing', () => {
+    const runtime = createMaterialHandlingRuntime({
+      ...materialHandling,
+      nodes: [
+        { id: 'a', type: 'home', x: 0, z: 0 },
+        { id: 'b', type: 'station', x: 10, z: 0 }
+      ],
+      paths: [{ id: 'a-b', from: 'a', to: 'b', lengthM: 10, bidirectional: true, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' }],
+      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'a', speedMps: 4, accelerationMps2: 1, decelerationMps2: 1, minClearanceM: 0 }],
+      storageSystems: [],
+      conveyors: []
+    });
+
+    const route = runtime.findShortestRoute('a', 'b', 'amr');
+    const reserved = runtime.reserveRoute('a', 'b', 'amr', 0);
+
+    expect(route.travelTimeSec).toBeCloseTo(2 * Math.sqrt(10), 5);
+    expect(reserved.segments[0]?.travelProfile.kind).toBe('triangular');
+    expect(reserved.travelEndSec).toBeCloseTo(route.travelTimeSec, 5);
   });
 
   it('reserves path-guided aisle capacity to serialize conflicting moves', () => {

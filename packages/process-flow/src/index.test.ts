@@ -239,9 +239,9 @@ describe('ProcessFlowRuntime', () => {
     const result = runProcessFlow(flow, 20, undefined, { materialHandling });
 
     expect(result.snapshot.completedEntities).toBe(1);
-    expect(result.snapshot.entities[0]?.completedAtSec).toBe(14);
+    expect(result.snapshot.entities[0]?.completedAtSec).toBeCloseTo(15.6666666667, 5);
     expect(result.snapshot.entities[0]?.attributes.locationNodeId).toBe('ship');
-    expect(result.snapshot.entities[0]?.attributes.lastRouteTravelTimeSec).toBe(5);
+    expect(result.snapshot.entities[0]?.attributes.lastRouteTravelTimeSec).toBeCloseTo(10 / 1.5, 5);
     expect(result.snapshot.materialHandling?.transporterUnits[0]).toMatchObject({
       status: 'idle',
       currentNodeId: 'storage'
