@@ -52,6 +52,15 @@ export type RuntimeResourcePoolState = {
   available: number;
   waiting: ResourceWaitRequest[];
   maxQueueLength: number;
+  busyTimeSec: number;
+  utilization: number;
+  totalWaitTimeSec: number;
+  completedRequests: number;
+  averageWaitTimeSec: number;
+};
+
+type RuntimeResourcePoolMutableState = RuntimeResourcePoolState & {
+  lastChangedAtSec: number;
 };
 
 export type TransporterMoveRequest = {
@@ -65,6 +74,28 @@ export type TransporterMoveRequest = {
   queuedAtSec: number;
 };
 
+export type RuntimeTransporterFleetStats = {
+  fleetId: string;
+  moveRequests: number;
+  startedMoves: number;
+  completedMoves: number;
+  totalWaitTimeSec: number;
+  averageWaitTimeSec: number;
+  totalBusyTimeSec: number;
+  utilization: number;
+  totalEmptyDistanceM: number;
+  totalLoadedDistanceM: number;
+  totalDistanceM: number;
+  totalEmptyTravelTimeSec: number;
+  totalLoadedTravelTimeSec: number;
+  totalTravelTimeSec: number;
+};
+
+type RuntimeTransporterFleetMutableStats = Omit<
+  RuntimeTransporterFleetStats,
+  'averageWaitTimeSec' | 'utilization' | 'totalDistanceM' | 'totalTravelTimeSec'
+>;
+
 export type ProcessFlowSnapshot = {
   nowSec: number;
   createdEntities: number;
@@ -72,6 +103,7 @@ export type ProcessFlowSnapshot = {
   entities: ProcessEntity[];
   resourcePools: RuntimeResourcePoolState[];
   transporterWaits: TransporterMoveRequest[];
+  transporterFleetStats: RuntimeTransporterFleetStats[];
   materialHandling: MaterialHandlingSnapshot | null;
   blockStats: Record<string, ProcessBlockStats>;
 };
@@ -107,6 +139,11 @@ type TransportCompletePayload = {
   fleetId: string;
   transporterUnitId: string;
   toNodeId: string;
+  busyDurationSec: number;
+  emptyDistanceM: number;
+  loadedDistanceM: number;
+  emptyTravelTimeSec: number;
+  loadedTravelTimeSec: number;
 };
 
 function asSourceCreatePayload(payload: DesEventPayload): SourceCreatePayload {
@@ -132,7 +169,12 @@ function asTransportCompletePayload(payload: DesEventPayload): TransportComplete
     blockId: String(payload.blockId),
     fleetId: String(payload.fleetId),
     transporterUnitId: String(payload.transporterUnitId),
-    toNodeId: String(payload.toNodeId)
+    toNodeId: String(payload.toNodeId),
+    busyDurationSec: Number(payload.busyDurationSec),
+    emptyDistanceM: Number(payload.emptyDistanceM),
+    loadedDistanceM: Number(payload.loadedDistanceM),
+    emptyTravelTimeSec: Number(payload.emptyTravelTimeSec),
+    loadedTravelTimeSec: Number(payload.loadedTravelTimeSec)
   };
 }
 
@@ -152,12 +194,13 @@ export class ProcessFlowRuntime {
   private readonly definition: ProcessFlowDefinition;
   private readonly blockMap = new Map<string, ProcessFlowBlockDefinition>();
   private readonly outgoing = new Map<string, ProcessConnectionDefinition[]>();
-  private readonly resourcePools = new Map<string, RuntimeResourcePoolState>();
+  private readonly resourcePools = new Map<string, RuntimeResourcePoolMutableState>();
   private readonly sourceArrivalCounts = new Map<string, number>();
   private readonly entities = new Map<string, ProcessEntity>();
   private readonly completedEntityIds: string[] = [];
   private readonly blockStats = new Map<string, ProcessBlockStats>();
   private readonly transporterWaits = new Map<string, TransporterMoveRequest[]>();
+  private readonly transporterFleetStats = new Map<string, RuntimeTransporterFleetMutableStats>();
   private attached = false;
 
   constructor(
@@ -211,14 +254,9 @@ export class ProcessFlowRuntime {
         visitedBlockIds: [...entity.visitedBlockIds],
         resourceHoldings: { ...entity.resourceHoldings }
       })),
-      resourcePools: [...this.resourcePools.values()].map((pool) => ({
-        id: pool.id,
-        capacity: pool.capacity,
-        available: pool.available,
-        waiting: pool.waiting.map((request) => ({ ...request })),
-        maxQueueLength: pool.maxQueueLength
-      })),
+      resourcePools: [...this.resourcePools.values()].map((pool) => this.snapshotResourcePool(pool, nowSec)),
       transporterWaits: [...this.transporterWaits.values()].flat().map((request) => ({ ...request })),
+      transporterFleetStats: [...this.transporterFleetStats.values()].map((stats) => this.snapshotTransporterFleetStats(stats, nowSec)),
       materialHandling: this.materialHandling?.getSnapshot() ?? null,
       blockStats: Object.fromEntries(
         [...this.blockStats.entries()].map(([id, stats]) => [
@@ -231,14 +269,87 @@ export class ProcessFlowRuntime {
     };
   }
 
-  private createResourcePoolState(pool: ResourcePoolDefinition): RuntimeResourcePoolState {
+  private createResourcePoolState(pool: ResourcePoolDefinition): RuntimeResourcePoolMutableState {
     return {
       id: pool.id,
       capacity: pool.capacity,
       available: pool.initialAvailable ?? pool.capacity,
       waiting: [],
-      maxQueueLength: 0
+      maxQueueLength: 0,
+      busyTimeSec: 0,
+      utilization: 0,
+      totalWaitTimeSec: 0,
+      completedRequests: 0,
+      averageWaitTimeSec: 0,
+      lastChangedAtSec: 0
     };
+  }
+
+  private snapshotResourcePool(pool: RuntimeResourcePoolMutableState, nowSec: number): RuntimeResourcePoolState {
+    const busyTimeSec = this.resourceBusyTimeUntil(pool, nowSec);
+    return {
+      id: pool.id,
+      capacity: pool.capacity,
+      available: pool.available,
+      waiting: pool.waiting.map((request) => ({ ...request })),
+      maxQueueLength: pool.maxQueueLength,
+      busyTimeSec,
+      utilization: nowSec <= 0 || pool.capacity <= 0 ? 0 : busyTimeSec / (pool.capacity * nowSec),
+      totalWaitTimeSec: pool.totalWaitTimeSec,
+      completedRequests: pool.completedRequests,
+      averageWaitTimeSec: pool.completedRequests === 0 ? 0 : pool.totalWaitTimeSec / pool.completedRequests
+    };
+  }
+
+  private accrueResourceBusyTime(pool: RuntimeResourcePoolMutableState, nowSec: number): void {
+    pool.busyTimeSec = this.resourceBusyTimeUntil(pool, nowSec);
+    pool.lastChangedAtSec = nowSec;
+  }
+
+  private resourceBusyTimeUntil(pool: RuntimeResourcePoolMutableState, nowSec: number): number {
+    const elapsedSec = Math.max(0, nowSec - pool.lastChangedAtSec);
+    const busyUnits = pool.capacity - pool.available;
+    return pool.busyTimeSec + elapsedSec * busyUnits;
+  }
+
+  private snapshotTransporterFleetStats(
+    stats: RuntimeTransporterFleetMutableStats,
+    nowSec: number
+  ): RuntimeTransporterFleetStats {
+    const unitCount = this.materialHandling
+      ? this.materialHandling.getSnapshot().transporterUnits.filter((unit) => unit.fleetId === stats.fleetId).length
+      : 0;
+    const totalDistanceM = stats.totalEmptyDistanceM + stats.totalLoadedDistanceM;
+    const totalTravelTimeSec = stats.totalEmptyTravelTimeSec + stats.totalLoadedTravelTimeSec;
+    return {
+      ...stats,
+      averageWaitTimeSec: stats.startedMoves === 0 ? 0 : stats.totalWaitTimeSec / stats.startedMoves,
+      utilization: nowSec <= 0 || unitCount <= 0 ? 0 : stats.totalBusyTimeSec / (unitCount * nowSec),
+      totalDistanceM,
+      totalTravelTimeSec
+    };
+  }
+
+  private requireTransporterFleetStats(fleetId: string): RuntimeTransporterFleetMutableStats {
+    const existing = this.transporterFleetStats.get(fleetId);
+    if (existing) {
+      return existing;
+    }
+
+    const created: RuntimeTransporterFleetMutableStats = {
+      fleetId,
+      moveRequests: 0,
+      startedMoves: 0,
+      completedMoves: 0,
+      totalWaitTimeSec: 0,
+      totalBusyTimeSec: 0,
+      totalEmptyDistanceM: 0,
+      totalLoadedDistanceM: 0,
+      totalEmptyTravelTimeSec: 0,
+      totalLoadedTravelTimeSec: 0
+    };
+    this.transporterFleetStats.set(fleetId, created);
+    return created;
   }
 
   private scheduleSources(sim: DesSimulation<ProcessRuntimeState>): void {
@@ -404,6 +515,13 @@ export class ProcessFlowRuntime {
   private handleTransportComplete(sim: DesSimulation<ProcessRuntimeState>, payload: TransportCompletePayload): void {
     const entity = this.requireEntity(payload.entityId);
     const materialHandling = this.requireMaterialHandling(payload.blockId);
+    const stats = this.requireTransporterFleetStats(payload.fleetId);
+    stats.completedMoves += 1;
+    stats.totalBusyTimeSec += payload.busyDurationSec;
+    stats.totalEmptyDistanceM += payload.emptyDistanceM;
+    stats.totalLoadedDistanceM += payload.loadedDistanceM;
+    stats.totalEmptyTravelTimeSec += payload.emptyTravelTimeSec;
+    stats.totalLoadedTravelTimeSec += payload.loadedTravelTimeSec;
     materialHandling.releaseTransporter(payload.transporterUnitId, payload.toNodeId);
     entity.attributes.locationNodeId = payload.toNodeId;
     entity.attributes.lastTransporterFleetId = payload.fleetId;
@@ -428,6 +546,7 @@ export class ProcessFlowRuntime {
   private handleServiceComplete(sim: DesSimulation<ProcessRuntimeState>, payload: ServiceCompletePayload): void {
     const entity = this.requireEntity(payload.entityId);
     const pool = this.requireResourcePool(payload.resourcePoolId);
+    this.accrueResourceBusyTime(pool, sim.nowSec);
     pool.available += payload.quantity;
     if (pool.available > pool.capacity) {
       throw new Error(`Resource pool ${pool.id} released above capacity`);
@@ -451,7 +570,7 @@ export class ProcessFlowRuntime {
     this.tryStartWaitingRequests(sim, pool);
   }
 
-  private tryStartWaitingRequests(sim: DesSimulation<ProcessRuntimeState>, pool: RuntimeResourcePoolState): void {
+  private tryStartWaitingRequests(sim: DesSimulation<ProcessRuntimeState>, pool: RuntimeResourcePoolMutableState): void {
     let index = 0;
     while (index < pool.waiting.length) {
       const request = pool.waiting[index]!;
@@ -461,7 +580,10 @@ export class ProcessFlowRuntime {
       }
 
       pool.waiting.splice(index, 1);
+      this.accrueResourceBusyTime(pool, sim.nowSec);
       pool.available -= request.quantity;
+      pool.totalWaitTimeSec += sim.nowSec - request.queuedAtSec;
+      pool.completedRequests += 1;
 
       if (request.mode === 'service') {
         sim.scheduleIn(
@@ -496,6 +618,7 @@ export class ProcessFlowRuntime {
     }
 
     const pool = this.requireResourcePool(resourcePoolId);
+    this.accrueResourceBusyTime(pool, sim.nowSec);
     pool.available += quantity;
     if (pool.available > pool.capacity) {
       throw new Error(`Resource pool ${resourcePoolId} released above capacity`);
@@ -505,6 +628,7 @@ export class ProcessFlowRuntime {
 
   private enqueueTransporterMove(sim: DesSimulation<ProcessRuntimeState>, request: TransporterMoveRequest): void {
     this.requireMaterialHandling(request.blockId);
+    this.requireTransporterFleetStats(request.fleetId).moveRequests += 1;
     const waits = this.transporterWaits.get(request.fleetId) ?? [];
     waits.push(request);
     this.transporterWaits.set(request.fleetId, waits);
@@ -525,6 +649,9 @@ export class ProcessFlowRuntime {
       }
 
       waits.splice(index, 1);
+      const stats = this.requireTransporterFleetStats(fleetId);
+      stats.startedMoves += 1;
+      stats.totalWaitTimeSec += sim.nowSec - request.queuedAtSec;
       this.scheduleTransportCompletion(sim, request, unit);
     }
 
@@ -543,6 +670,7 @@ export class ProcessFlowRuntime {
     const loadedRoute = materialHandling.findShortestRoute(request.fromNodeId, request.toNodeId, request.fleetId);
     const routeDistanceM = emptyRoute.distanceM + loadedRoute.distanceM;
     const routeTravelTimeSec = emptyRoute.travelTimeSec + loadedRoute.travelTimeSec;
+    const busyDurationSec = request.loadTimeSec + routeTravelTimeSec + request.unloadTimeSec;
     const entity = this.requireEntity(request.entityId);
     entity.attributes.lastEmptyRouteDistanceM = emptyRoute.distanceM;
     entity.attributes.lastEmptyRouteTravelTimeSec = emptyRoute.travelTimeSec;
@@ -556,13 +684,18 @@ export class ProcessFlowRuntime {
 
     sim.scheduleIn(
       TRANSPORT_COMPLETE_EVENT,
-      request.loadTimeSec + routeTravelTimeSec + request.unloadTimeSec,
+      busyDurationSec,
       {
         entityId: request.entityId,
         blockId: request.blockId,
         fleetId: request.fleetId,
         transporterUnitId: unit.id,
-        toNodeId: request.toNodeId
+        toNodeId: request.toNodeId,
+        busyDurationSec,
+        emptyDistanceM: emptyRoute.distanceM,
+        loadedDistanceM: loadedRoute.distanceM,
+        emptyTravelTimeSec: emptyRoute.travelTimeSec,
+        loadedTravelTimeSec: loadedRoute.travelTimeSec
       },
       { priority: 45 }
     );
@@ -681,7 +814,7 @@ export class ProcessFlowRuntime {
     return entity;
   }
 
-  private requireResourcePool(resourcePoolId: string): RuntimeResourcePoolState {
+  private requireResourcePool(resourcePoolId: string): RuntimeResourcePoolMutableState {
     const pool = this.resourcePools.get(resourcePoolId);
     if (!pool) {
       throw new Error(`Unknown resource pool ${resourcePoolId}`);

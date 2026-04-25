@@ -61,6 +61,7 @@ Validation gates:
 ```bash
 pnpm install
 pnpm generate:schema
+pnpm generate:catalog
 pnpm typecheck
 pnpm test
 pnpm run:model
@@ -91,6 +92,8 @@ It is intentionally code/data based instead of drag-and-drop based:
 - `@des-platform/process-flow` executes the model on `@des-platform/des-core`.
 - `@des-platform/material-handling` provides the first generic material-flow runtime layer for `MoveByTransporter`, `Store`, `Retrieve`, and `Convey` blocks.
 - Transporter moves include empty travel from the vehicle's current node to the pickup node plus loaded travel to the destination node.
+- Runtime outputs include resource utilization, resource wait times, transporter requests, transporter wait times, empty travel, loaded travel, and total transporter distance.
+- The machine-readable AI block catalog is generated at `config/catalog/des-library-catalog.json`.
 - Generated JSON Schemas include `process-flow.schema.json`, `material-handling.schema.json`, and `model-dsl.schema.json`.
 
 Generic models can be run without the viewer:
@@ -120,6 +123,8 @@ pnpm report:model output/fulfillment-center-mvp-throughput-sweep-sweep.json
 ```
 
 The current generic MVP scenario is [fulfillment-center-mvp.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/models/fulfillment-center-mvp.json). It combines probabilistic order classes, assignment logic, AMR moves, storage, packing resources, conveyor travel, replications, parameter sweeps, and an HTML report.
+
+The AI-native library catalog is [des-library-catalog.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/catalog/des-library-catalog.json). It documents the available Process Flow blocks, Material Handling primitives, experiment controls, parameters, constraints, and examples in a structure an agent can use directly.
 
 Viewer defaults:
 

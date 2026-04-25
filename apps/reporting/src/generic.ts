@@ -162,8 +162,26 @@ function renderRunSections(result: GenericDesRunResult): string {
           <td>${escapeHtml(pool.id)}</td>
           <td>${pool.capacity}</td>
           <td>${pool.available}</td>
+          <td>${formatPercent(pool.utilization)}</td>
           <td>${pool.waiting.length}</td>
+          <td>${formatNumber(pool.averageWaitTimeSec)} s</td>
           <td>${pool.maxQueueLength}</td>
+        </tr>
+      `
+    )
+    .join('');
+  const transporterRows = result.snapshot.transporterFleetStats
+    .map(
+      (fleet) => `
+        <tr>
+          <td>${escapeHtml(fleet.fleetId)}</td>
+          <td>${fleet.moveRequests}</td>
+          <td>${fleet.completedMoves}</td>
+          <td>${formatPercent(fleet.utilization)}</td>
+          <td>${formatNumber(fleet.averageWaitTimeSec)} s</td>
+          <td>${formatNumber(fleet.totalDistanceM)} m</td>
+          <td>${formatNumber(fleet.totalEmptyDistanceM)} m</td>
+          <td>${formatNumber(fleet.totalLoadedDistanceM)} m</td>
         </tr>
       `
     )
@@ -199,8 +217,17 @@ function renderRunSections(result: GenericDesRunResult): string {
       <article>
         <h2>Resources</h2>
         <table>
-          <thead><tr><th>Pool</th><th>Capacity</th><th>Available</th><th>Waiting</th><th>Max Queue</th></tr></thead>
-          <tbody>${resourceRows || '<tr><td colspan="5">No resource pools.</td></tr>'}</tbody>
+          <thead><tr><th>Pool</th><th>Capacity</th><th>Available</th><th>Utilization</th><th>Waiting</th><th>Avg Wait</th><th>Max Queue</th></tr></thead>
+          <tbody>${resourceRows || '<tr><td colspan="7">No resource pools.</td></tr>'}</tbody>
+        </table>
+      </article>
+    </section>
+    <section>
+      <article>
+        <h2>Transporter Fleets</h2>
+        <table>
+          <thead><tr><th>Fleet</th><th>Requests</th><th>Completed</th><th>Utilization</th><th>Avg Wait</th><th>Total Distance</th><th>Empty</th><th>Loaded</th></tr></thead>
+          <tbody>${transporterRows || '<tr><td colspan="8">No transporter fleet activity.</td></tr>'}</tbody>
         </table>
       </article>
     </section>

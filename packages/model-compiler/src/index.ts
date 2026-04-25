@@ -17,6 +17,31 @@ export type GenericRunEntitySummary = {
   cycleTimeSec: number | null;
 };
 
+export type GenericResourcePoolSummary = {
+  id: string;
+  capacity: number;
+  utilization: number;
+  totalWaitTimeSec: number;
+  averageWaitTimeSec: number;
+  completedRequests: number;
+  maxQueueLength: number;
+};
+
+export type GenericTransporterFleetSummary = {
+  fleetId: string;
+  moveRequests: number;
+  startedMoves: number;
+  completedMoves: number;
+  utilization: number;
+  totalWaitTimeSec: number;
+  averageWaitTimeSec: number;
+  totalBusyTimeSec: number;
+  totalDistanceM: number;
+  totalEmptyDistanceM: number;
+  totalLoadedDistanceM: number;
+  totalTravelTimeSec: number;
+};
+
 export type GenericRunSummary = {
   createdEntities: number;
   completedEntities: number;
@@ -30,6 +55,8 @@ export type GenericRunSummary = {
   transporterUnitCount: number;
   storageSystemCount: number;
   conveyorCount: number;
+  resourcePools: GenericResourcePoolSummary[];
+  transporterFleets: GenericTransporterFleetSummary[];
   entities: GenericRunEntitySummary[];
 };
 
@@ -271,6 +298,29 @@ function buildGenericRunResult(
       transporterUnitCount: materialHandling?.transporterUnits.length ?? 0,
       storageSystemCount: materialHandling?.storageSystems.length ?? 0,
       conveyorCount: materialHandling?.conveyors.length ?? 0,
+      resourcePools: run.snapshot.resourcePools.map((pool) => ({
+        id: pool.id,
+        capacity: pool.capacity,
+        utilization: pool.utilization,
+        totalWaitTimeSec: pool.totalWaitTimeSec,
+        averageWaitTimeSec: pool.averageWaitTimeSec,
+        completedRequests: pool.completedRequests,
+        maxQueueLength: pool.maxQueueLength
+      })),
+      transporterFleets: run.snapshot.transporterFleetStats.map((fleet) => ({
+        fleetId: fleet.fleetId,
+        moveRequests: fleet.moveRequests,
+        startedMoves: fleet.startedMoves,
+        completedMoves: fleet.completedMoves,
+        utilization: fleet.utilization,
+        totalWaitTimeSec: fleet.totalWaitTimeSec,
+        averageWaitTimeSec: fleet.averageWaitTimeSec,
+        totalBusyTimeSec: fleet.totalBusyTimeSec,
+        totalDistanceM: fleet.totalDistanceM,
+        totalEmptyDistanceM: fleet.totalEmptyDistanceM,
+        totalLoadedDistanceM: fleet.totalLoadedDistanceM,
+        totalTravelTimeSec: fleet.totalTravelTimeSec
+      })),
       entities
     },
     eventLog: run.simulation.eventLog,

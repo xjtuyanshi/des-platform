@@ -137,6 +137,14 @@ describe('model compiler', () => {
     expect(result.summary.completedEntities).toBe(2);
     expect(result.summary.averageCycleTimeSec).toBe(4.5);
     expect(result.summary.stoppedBy).toBe('empty');
+    expect(result.summary.resourcePools[0]).toMatchObject({
+      id: 'server',
+      utilization: 0.6,
+      totalWaitTimeSec: 3,
+      averageWaitTimeSec: 1.5,
+      completedRequests: 2,
+      maxQueueLength: 1
+    });
     expect(result.seed).toBe(1);
     expect(JSON.parse(JSON.stringify(result)).modelId).toBe('serializable');
   });

@@ -46,6 +46,12 @@ describe('ProcessFlowRuntime', () => {
     expect(result.snapshot.completedEntities).toBe(3);
     expect(result.snapshot.entities.map((entity) => entity.completedAtSec)).toEqual([10, 20, 30]);
     expect(result.snapshot.resourcePools[0]?.maxQueueLength).toBe(2);
+    expect(result.snapshot.resourcePools[0]).toMatchObject({
+      busyTimeSec: 30,
+      totalWaitTimeSec: 30,
+      completedRequests: 3,
+      averageWaitTimeSec: 10
+    });
   });
 
   it('samples stochastic interarrival and service times reproducibly by seed', () => {
@@ -278,5 +284,20 @@ describe('ProcessFlowRuntime', () => {
     expect(result.snapshot.entities[0]?.attributes.lastEmptyRouteTravelTimeSec).toBe(0);
     expect(result.snapshot.entities[1]?.attributes.lastEmptyRouteTravelTimeSec).toBe(10);
     expect(result.snapshot.entities[1]?.attributes.lastRouteTravelTimeSec).toBe(20);
+    expect(result.snapshot.transporterFleetStats[0]).toMatchObject({
+      fleetId: 'amr',
+      moveRequests: 2,
+      startedMoves: 2,
+      completedMoves: 2,
+      totalWaitTimeSec: 9,
+      averageWaitTimeSec: 4.5,
+      totalBusyTimeSec: 30,
+      totalEmptyDistanceM: 10,
+      totalLoadedDistanceM: 20,
+      totalDistanceM: 30,
+      totalEmptyTravelTimeSec: 10,
+      totalLoadedTravelTimeSec: 20,
+      totalTravelTimeSec: 30
+    });
   });
 });
