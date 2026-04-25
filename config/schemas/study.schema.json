@@ -1,0 +1,95 @@
+{
+  "$ref": "#/definitions/SimulationStudyCaseDefinition",
+  "definitions": {
+    "SimulationStudyCaseDefinition": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "des-platform.study.v1"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string",
+          "default": ""
+        },
+        "modelPath": {
+          "type": "string"
+        },
+        "outputDir": {
+          "type": "string"
+        },
+        "validate": {
+          "type": "boolean",
+          "default": true
+        },
+        "failOnValidationError": {
+          "type": "boolean",
+          "default": true
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "experimentId": {
+                "type": "string"
+              },
+              "outputName": {
+                "type": "string"
+              },
+              "htmlReport": {
+                "type": "boolean",
+                "default": true
+              }
+            },
+            "required": [
+              "experimentId"
+            ],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "replications": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/runs/items"
+          },
+          "default": []
+        },
+        "sweeps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/runs/items"
+          },
+          "default": []
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          },
+          "default": {}
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "name",
+        "modelPath"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

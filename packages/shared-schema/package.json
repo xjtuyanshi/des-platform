@@ -8,7 +8,8 @@
     "./layout-factory": "./src/layout-factory.ts",
     "./library-catalog": "./src/library-catalog.ts",
     "./loader": "./src/loader.ts",
-    "./model-dsl": "./src/model-dsl.ts"
+    "./model-dsl": "./src/model-dsl.ts",
+    "./study": "./src/study.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

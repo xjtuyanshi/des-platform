@@ -67,6 +67,7 @@ pnpm test
 pnpm run:model
 pnpm run:experiment
 pnpm run:sweep
+pnpm run:study
 pnpm validate:model
 pnpm report:model
 pnpm mvp:generic
@@ -95,8 +96,9 @@ It is intentionally code/data based instead of drag-and-drop based:
 - Path-guided material handling routes use lightweight traffic-control reservations, so shared aisles can serialize AMR/AGV movement by path `capacity`.
 - Transporter travel time uses fleet speed, path speed limits, and optional acceleration/deceleration with triangular or trapezoidal velocity profiles.
 - Runtime outputs include resource utilization, resource wait times, transporter requests, transporter wait times, empty travel, loaded travel, and total transporter distance.
+- Study cases wrap validation, single runs, replications, sweeps, HTML reports, and a manifest into one input file that an AI agent can author or modify.
 - The machine-readable AI block catalog is generated at `config/catalog/des-library-catalog.json`.
-- Generated JSON Schemas include `process-flow.schema.json`, `material-handling.schema.json`, and `model-dsl.schema.json`.
+- Generated JSON Schemas include `process-flow.schema.json`, `material-handling.schema.json`, `model-dsl.schema.json`, and `study.schema.json`.
 
 Generic models can be run without the viewer:
 
@@ -109,6 +111,7 @@ pnpm run:model config/models/warehouse-material-flow.json baseline
 pnpm run:model config/models/stochastic-single-machine.json seed-20260424
 pnpm run:experiment config/models/stochastic-single-machine.json seed-20260424
 pnpm run:sweep config/models/stochastic-single-machine.json arrival-service-sweep
+pnpm run:study config/studies/fulfillment-center-mvp.study.json
 pnpm mvp:generic
 ```
 
@@ -124,7 +127,17 @@ Generic report runs write `output/<model-id>-<experiment-id>-*.html` for model-r
 pnpm report:model output/fulfillment-center-mvp-throughput-sweep-sweep.json
 ```
 
+The one-file study runner is the current end-to-end MVP path:
+
+```bash
+pnpm run:study config/studies/fulfillment-center-mvp.study.json
+```
+
+It writes validation diagnostics, a baseline run, a replication experiment, a throughput sweep, HTML reports, and a manifest under `output/studies/fulfillment-center-mvp/`. The manifest at [manifest.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/output/studies/fulfillment-center-mvp/manifest.json) is the index for the full simulation package.
+
 The current generic MVP scenario is [fulfillment-center-mvp.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/models/fulfillment-center-mvp.json). It combines probabilistic order classes, assignment logic, AMR moves, storage, packing resources, conveyor travel, replications, parameter sweeps, and an HTML report.
+
+The current one-file study case is [fulfillment-center-mvp.study.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/studies/fulfillment-center-mvp.study.json). It is the simplest entry point for inputting one case and running the full simulation suite.
 
 The AI-native library catalog is [des-library-catalog.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/catalog/des-library-catalog.json). It documents the available Process Flow blocks, Material Handling primitives, experiment controls, parameters, constraints, and examples in a structure an agent can use directly.
 

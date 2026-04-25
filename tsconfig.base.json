@@ -31,7 +31,8 @@
       "@des-platform/dispatching": ["packages/dispatching/src/index.ts"],
       "@des-platform/motion-layer": ["packages/motion-layer/src/index.ts"],
       "@des-platform/simulation-core": ["packages/simulation-core/src/index.ts"],
-      "reporting": ["apps/reporting/src/index.ts"]
+      "reporting": ["apps/reporting/src/index.ts"],
+      "reporting/generic": ["apps/reporting/src/generic.ts"]
     }
   }
 }

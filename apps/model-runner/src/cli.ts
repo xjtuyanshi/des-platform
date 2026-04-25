@@ -12,11 +12,34 @@ import {
   type ModelDiagnostic,
   type ModelDiagnosticsReport
 } from '@des-platform/model-compiler';
-import { loadAiNativeDesModel, loadUnknownDefinition } from '@des-platform/shared-schema/loader';
+import type { StudyOperationDefinition, SimulationStudyCaseDefinition } from '@des-platform/shared-schema/study';
+import { loadAiNativeDesModel, loadSimulationStudyCase, loadUnknownDefinition } from '@des-platform/shared-schema/loader';
+import { renderGenericDesReport, type GenericDesReportInput } from 'reporting/generic';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(currentDir, '../../..');
 const defaultModelPath = path.join(rootDir, 'config/models/single-server-process.json');
+const defaultStudyPath = path.join(rootDir, 'config/studies/fulfillment-center-mvp.study.json');
+
+type StudyArtifactKind = 'diagnostics' | 'run' | 'experiment' | 'sweep' | 'html-report' | 'manifest';
+
+type StudyArtifact = {
+  kind: StudyArtifactKind;
+  path: string;
+  experimentId?: string;
+};
+
+type StudyManifest = {
+  schemaVersion: 'des-platform.study-result.v1';
+  studyId: string;
+  studyName: string;
+  modelPath: string;
+  outputDir: string;
+  valid: boolean;
+  errors: number;
+  warnings: number;
+  artifacts: StudyArtifact[];
+};
 
 function usage(): string {
   return [
@@ -24,11 +47,13 @@ function usage(): string {
     '  pnpm run:model [modelPath] [experimentId] [outputPath]',
     '  pnpm run:experiment [modelPath] [experimentId] [outputPath]',
     '  pnpm run:sweep [modelPath] [experimentId] [outputPath]',
+    '  pnpm run:study [studyPath] [outputDir]',
     '  pnpm validate:model [modelPath] [outputPath]',
     '',
     'Options:',
     '  --experiment Validate and run all replications for an experiment',
     '  --sweep      Run every parameter sweep case and replication for an experiment',
+    '  --study      Run one study case end-to-end and write a manifest',
     '  --validate   Validate the model and write diagnostics without running it',
     '',
     'Examples:',
@@ -36,6 +61,7 @@ function usage(): string {
     '  pnpm run:model config/models/warehouse-material-flow.json baseline',
     '  pnpm run:experiment config/models/stochastic-single-machine.json seed-20260424',
     '  pnpm run:sweep config/models/stochastic-single-machine.json arrival-service-sweep',
+    '  pnpm run:study config/studies/fulfillment-center-mvp.study.json',
     '  pnpm run:model config/models/single-server-process.json baseline output/single-server-run.json',
     '  pnpm validate:model config/models/warehouse-material-flow.json'
   ].join('\n');
@@ -50,7 +76,8 @@ if (args.includes('--help') || args.includes('-h')) {
 const validateOnly = args[0] === '--validate';
 const experimentMode = args[0] === '--experiment';
 const sweepMode = args[0] === '--sweep';
-const positionalArgs = validateOnly || experimentMode || sweepMode ? args.slice(1) : args;
+const studyMode = args[0] === '--study';
+const positionalArgs = validateOnly || experimentMode || sweepMode || studyMode ? args.slice(1) : args;
 
 if (validateOnly) {
   await validateModel(positionalArgs);
@@ -58,6 +85,8 @@ if (validateOnly) {
   await runExperiment(positionalArgs);
 } else if (sweepMode) {
   await runSweep(positionalArgs);
+} else if (studyMode) {
+  await runStudy(positionalArgs);
 } else {
   await runModel(positionalArgs);
 }
@@ -142,6 +171,60 @@ async function validateModel(positionalArgs: string[]): Promise<void> {
   }
 }
 
+async function runStudy(positionalArgs: string[]): Promise<void> {
+  const studyPath = path.resolve(rootDir, positionalArgs[0] ?? defaultStudyPath);
+  const study = await loadSimulationStudyCase(studyPath);
+  const modelPath = path.resolve(path.dirname(studyPath), study.modelPath);
+  const outputDir = path.resolve(rootDir, positionalArgs[1] ?? study.outputDir ?? `output/studies/${study.id}`);
+  const artifacts: StudyArtifact[] = [];
+  let diagnostics: ModelDiagnosticsReport | null = null;
+
+  await mkdir(outputDir, { recursive: true });
+
+  if (study.validate) {
+    diagnostics = await loadAndAnalyzeModel(modelPath);
+    const diagnosticsPath = path.join(outputDir, 'diagnostics.json');
+    await writeJsonFile(diagnosticsPath, diagnostics);
+    artifacts.push({ kind: 'diagnostics', path: diagnosticsPath });
+
+    if (!diagnostics.valid && study.failOnValidationError) {
+      const manifestPath = path.join(outputDir, 'manifest.json');
+      artifacts.push({ kind: 'manifest', path: manifestPath });
+      const manifest = buildStudyManifest(study, modelPath, outputDir, diagnostics, artifacts);
+      await writeJsonFile(manifestPath, manifest);
+      printStudySummary(study, manifest, manifestPath);
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  const model = await loadAiNativeDesModel(modelPath);
+
+  for (const operation of study.runs) {
+    const result = runDesModelToResult(model, operation.experimentId);
+    const outputPath = path.join(outputDir, `${studyArtifactStem(model.id, operation, 'run')}.json`);
+    await writeStudyResult(outputPath, result, operation, 'run', artifacts);
+  }
+
+  for (const operation of study.replications) {
+    const result = runDesModelReplicationsToResult(model, operation.experimentId);
+    const outputPath = path.join(outputDir, `${studyArtifactStem(model.id, operation, 'experiment')}.json`);
+    await writeStudyResult(outputPath, result, operation, 'experiment', artifacts);
+  }
+
+  for (const operation of study.sweeps) {
+    const result = runDesModelSweepToResult(model, operation.experimentId);
+    const outputPath = path.join(outputDir, `${studyArtifactStem(model.id, operation, 'sweep')}.json`);
+    await writeStudyResult(outputPath, result, operation, 'sweep', artifacts);
+  }
+
+  const manifestPath = path.join(outputDir, 'manifest.json');
+  artifacts.push({ kind: 'manifest', path: manifestPath });
+  const manifest = buildStudyManifest(study, modelPath, outputDir, diagnostics, artifacts);
+  await writeJsonFile(manifestPath, manifest);
+  printStudySummary(study, manifest, manifestPath);
+}
+
 async function loadAndAnalyzeModel(modelPath: string): Promise<ModelDiagnosticsReport> {
   try {
     return analyzeDesModel(await loadUnknownDefinition(modelPath));
@@ -164,6 +247,71 @@ function unreadableModelReport(modelPath: string, loadError: unknown): ModelDiag
     warnings: [],
     diagnostics: [diagnostic]
   };
+}
+
+async function writeStudyResult(
+  outputPath: string,
+  result: GenericDesReportInput,
+  operation: StudyOperationDefinition,
+  kind: 'run' | 'experiment' | 'sweep',
+  artifacts: StudyArtifact[]
+): Promise<void> {
+  await writeJsonFile(outputPath, result);
+  artifacts.push({ kind, path: outputPath, experimentId: result.experimentId });
+
+  if (operation.htmlReport) {
+    const htmlPath = outputPath.replace(/\.json$/i, '.html');
+    await writeFile(htmlPath, renderGenericDesReport(result), 'utf8');
+    artifacts.push({ kind: 'html-report', path: htmlPath, experimentId: result.experimentId });
+  }
+}
+
+async function writeJsonFile(outputPath: string, value: unknown): Promise<void> {
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function buildStudyManifest(
+  study: SimulationStudyCaseDefinition,
+  modelPath: string,
+  outputDir: string,
+  diagnostics: ModelDiagnosticsReport | null,
+  artifacts: StudyArtifact[]
+): StudyManifest {
+  return {
+    schemaVersion: 'des-platform.study-result.v1',
+    studyId: study.id,
+    studyName: study.name,
+    modelPath,
+    outputDir,
+    valid: diagnostics?.valid ?? true,
+    errors: diagnostics?.errors.length ?? 0,
+    warnings: diagnostics?.warnings.length ?? 0,
+    artifacts: [...artifacts]
+  };
+}
+
+function studyArtifactStem(
+  modelId: string,
+  operation: StudyOperationDefinition,
+  suffix: 'run' | 'experiment' | 'sweep'
+): string {
+  return safeFileName(operation.outputName ?? `${modelId}-${operation.experimentId}-${suffix}`);
+}
+
+function safeFileName(value: string): string {
+  return value.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'artifact';
+}
+
+function printStudySummary(study: SimulationStudyCaseDefinition, manifest: StudyManifest, manifestPath: string): void {
+  console.log(`study=${study.id}`);
+  console.log(`name=${study.name}`);
+  console.log(`valid=${manifest.valid}`);
+  console.log(`errors=${manifest.errors}`);
+  console.log(`warnings=${manifest.warnings}`);
+  console.log(`artifacts=${manifest.artifacts.length}`);
+  console.log(`outputDir=${manifest.outputDir}`);
+  console.log(`manifest=${manifestPath}`);
 }
 
 function printExperimentSummary(result: GenericDesExperimentResult): void {

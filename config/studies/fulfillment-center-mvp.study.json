@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "des-platform.study.v1",
+  "id": "fulfillment-center-mvp",
+  "name": "Fulfillment Center MVP Study",
+  "description": "One-file study case that validates, runs baseline, runs replications, runs the throughput sweep, and writes HTML reports.",
+  "modelPath": "../models/fulfillment-center-mvp.json",
+  "outputDir": "output/studies/fulfillment-center-mvp",
+  "validate": true,
+  "failOnValidationError": true,
+  "runs": [
+    {
+      "experimentId": "baseline",
+      "outputName": "baseline-run",
+      "htmlReport": true
+    }
+  ],
+  "replications": [
+    {
+      "experimentId": "baseline",
+      "outputName": "baseline-experiment",
+      "htmlReport": true
+    }
+  ],
+  "sweeps": [
+    {
+      "experimentId": "throughput-sweep",
+      "outputName": "throughput-sweep",
+      "htmlReport": true
+    }
+  ],
+  "metadata": {
+    "domain": "fulfillment",
+    "mvp": true
+  }
+}

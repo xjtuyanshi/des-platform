@@ -7,11 +7,13 @@
     "run": "tsx src/cli.ts",
     "experiment": "tsx src/cli.ts --experiment",
     "sweep": "tsx src/cli.ts --sweep",
+    "study": "tsx src/cli.ts --study",
     "validate": "tsx src/cli.ts --validate",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@des-platform/model-compiler": "workspace:*",
-    "@des-platform/shared-schema": "workspace:*"
+    "@des-platform/shared-schema": "workspace:*",
+    "reporting": "workspace:*"
   }
 }

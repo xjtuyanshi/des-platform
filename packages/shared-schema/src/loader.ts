@@ -22,6 +22,10 @@ import {
   type MaterialHandlingDefinition,
   type ProcessFlowDefinition
 } from './model-dsl.js';
+import {
+  SimulationStudyCaseDefinitionSchema,
+  type SimulationStudyCaseDefinition
+} from './study.js';
 
 function parseByExtension(filePath: string, raw: string): unknown {
   if (filePath.endsWith('.yaml') || filePath.endsWith('.yml')) {
@@ -59,6 +63,11 @@ export async function loadAiNativeDesModel(modelPath: string): Promise<AiNativeD
 export async function loadMaterialHandlingDefinition(materialHandlingPath: string): Promise<MaterialHandlingDefinition> {
   const raw = await readFile(materialHandlingPath, 'utf8');
   return MaterialHandlingDefinitionSchema.parse(parseByExtension(materialHandlingPath, raw));
+}
+
+export async function loadSimulationStudyCase(studyPath: string): Promise<SimulationStudyCaseDefinition> {
+  const raw = await readFile(studyPath, 'utf8');
+  return SimulationStudyCaseDefinitionSchema.parse(parseByExtension(studyPath, raw));
 }
 
 export async function loadScenarioBundle(scenarioPath: string): Promise<{ scenario: ScenarioDefinition; layout: LayoutDefinition; resolvedLayoutPath: string }> {
@@ -100,7 +109,8 @@ export async function writeJsonSchemas(outputDir: string): Promise<void> {
     ['simulation-result.schema.json', zodToJsonSchema(SimulationResultSchema, 'SimulationResult')],
     ['process-flow.schema.json', zodToJsonSchema(ProcessFlowDefinitionSchema, 'ProcessFlowDefinition')],
     ['material-handling.schema.json', zodToJsonSchema(MaterialHandlingDefinitionSchema, 'MaterialHandlingDefinition')],
-    ['model-dsl.schema.json', zodToJsonSchema(AiNativeDesModelDefinitionSchema, 'AiNativeDesModelDefinition')]
+    ['model-dsl.schema.json', zodToJsonSchema(AiNativeDesModelDefinitionSchema, 'AiNativeDesModelDefinition')],
+    ['study.schema.json', zodToJsonSchema(SimulationStudyCaseDefinitionSchema, 'SimulationStudyCaseDefinition')]
   ] as const;
 
   await Promise.all(

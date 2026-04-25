@@ -29,6 +29,9 @@ importers:
       '@des-platform/shared-schema':
         specifier: workspace:*
         version: link:../../packages/shared-schema
+      reporting:
+        specifier: workspace:*
+        version: link:../reporting
 
   apps/reporting:
     dependencies:
