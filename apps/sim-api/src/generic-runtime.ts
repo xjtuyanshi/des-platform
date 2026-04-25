@@ -595,6 +595,53 @@ export function renderGenericRuntimeViewer(studyId: string): string {
       .events-panel {
         margin-top: 12px;
       }
+      .verification-panel {
+        margin-top: 12px;
+      }
+      .verification-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .state-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        background: #fff;
+      }
+      .state-card h3 {
+        margin: 0;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        font-size: 13px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-size: 12px;
+      }
+      th, td {
+        padding: 7px 8px;
+        border-bottom: 1px solid #edf1f6;
+        text-align: left;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 10px;
+        letter-spacing: 0;
+      }
+      tr:last-child td {
+        border-bottom: 0;
+      }
+      .empty-cell {
+        color: var(--muted);
+      }
       .kpis {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -660,6 +707,7 @@ export function renderGenericRuntimeViewer(studyId: string): string {
       code { font-family: "SFMono-Regular", Consolas, monospace; }
       @media (max-width: 900px) {
         .grid { grid-template-columns: 1fr; }
+        .verification-grid { grid-template-columns: 1fr; }
         .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
     </style>
@@ -699,6 +747,27 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           </div>
         </section>
       </div>
+      <section class="verification-panel">
+        <h2>Live Verification</h2>
+        <div class="verification-grid">
+          <article class="state-card">
+            <h3>Resources</h3>
+            <table id="resources"></table>
+          </article>
+          <article class="state-card">
+            <h3>Active Transports</h3>
+            <table id="transports"></table>
+          </article>
+          <article class="state-card">
+            <h3>Transporter Units</h3>
+            <table id="units"></table>
+          </article>
+          <article class="state-card">
+            <h3>Active Entities</h3>
+            <table id="entities"></table>
+          </article>
+        </div>
+      </section>
       <section class="events-panel">
         <h2>Recent Runtime Events</h2>
         <div id="events" class="event-list"></div>
@@ -943,6 +1012,115 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         return '';
       }
 
+      function transportPhase(transport, nowSec) {
+        if (nowSec < transport.emptyTravelEndSec) return 'empty travel';
+        if (nowSec < transport.loadEndSec) return 'load';
+        if (nowSec < transport.loadedTravelEndSec) return 'loaded travel';
+        if (nowSec < transport.unloadEndSec) return 'unload';
+        return 'done';
+      }
+
+      function rounded(value, digits = 1) {
+        return Number.isFinite(value) ? Number(value).toFixed(digits) : '-';
+      }
+
+      function percent(value) {
+        return Number.isFinite(value) ? Math.round(value * 100) + '%' : '-';
+      }
+
+      function setTableRows(tableId, headers, rows, emptyText) {
+        const table = $(tableId);
+        table.innerHTML = '';
+        const thead = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        for (const header of headers) {
+          const th = document.createElement('th');
+          th.textContent = header;
+          headRow.appendChild(th);
+        }
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        if (rows.length === 0) {
+          const row = document.createElement('tr');
+          const cell = document.createElement('td');
+          cell.colSpan = headers.length;
+          cell.className = 'empty-cell';
+          cell.textContent = emptyText;
+          row.appendChild(cell);
+          tbody.appendChild(row);
+        } else {
+          for (const values of rows) {
+            const row = document.createElement('tr');
+            for (const value of values) {
+              const cell = document.createElement('td');
+              cell.title = value == null ? '' : String(value);
+              cell.textContent = value == null || value === '' ? '-' : String(value);
+              row.appendChild(cell);
+            }
+            tbody.appendChild(row);
+          }
+        }
+        table.appendChild(tbody);
+      }
+
+      function renderVerification() {
+        const nowSec = snapshot?.nowSec ?? 0;
+        const resources = snapshot?.resourcePools ?? [];
+        setTableRows(
+          'resources',
+          ['Pool', 'Avail', 'Queue', 'Util', 'Avg Wait'],
+          resources.map((pool) => [
+            pool.id,
+            pool.available + '/' + pool.capacity,
+            pool.waiting.length + ' / max ' + pool.maxQueueLength,
+            percent(pool.utilization),
+            rounded(pool.averageWaitTimeSec) + 's'
+          ]),
+          'No resources'
+        );
+
+        const transports = snapshot?.activeTransports ?? [];
+        setTableRows(
+          'transports',
+          ['Unit', 'Entity', 'Phase', 'From', 'To'],
+          transports.map((transport) => [
+            transport.transporterUnitId,
+            transport.entityId,
+            transportPhase(transport, nowSec),
+            transport.loadedFromNodeId,
+            transport.loadedToNodeId
+          ]),
+          'No active transports'
+        );
+
+        const units = snapshot?.materialHandling?.transporterUnits ?? [];
+        setTableRows(
+          'units',
+          ['Unit', 'Fleet', 'Status', 'Node', 'Entity'],
+          units.map((unit) => [unit.id, unit.fleetId, unit.status, unit.currentNodeId, unit.assignedEntityId ?? '-']),
+          'No transporter units'
+        );
+
+        const activeEntities = (snapshot?.entities ?? [])
+          .filter((entity) => entity.completedAtSec === null)
+          .slice(-10)
+          .reverse();
+        setTableRows(
+          'entities',
+          ['Entity', 'Type', 'Block', 'Age', 'Visits'],
+          activeEntities.map((entity) => [
+            entity.id,
+            entity.type,
+            entity.currentBlockId ?? '-',
+            rounded(nowSec - entity.createdAtSec) + 's',
+            entity.visitedBlockIds.length
+          ]),
+          'No active entities'
+        );
+      }
+
       function renderLogic() {
         const svg = $('logic');
         svg.innerHTML = '';
@@ -1160,6 +1338,7 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         $('completed').textContent = snapshot?.completedEntities ?? 0;
         renderLayout();
         renderLogic();
+        renderVerification();
         renderEvents();
       }
 
