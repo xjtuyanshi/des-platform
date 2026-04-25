@@ -207,4 +207,91 @@ describe('MotionWorld', () => {
     expect(verification.units[0]?.status).toBe('waiting');
     expect(verification.warnings.some((warning) => warning.code === 'motion.static-obstacle-route')).toBe(true);
   });
+
+  it('projects near-simultaneous crossings on different path segments', () => {
+    const model = AiNativeDesModelDefinitionSchema.parse({
+      schemaVersion: 'des-platform.v1' as const,
+      id: 'projected-crossing',
+      name: 'Projected Crossing',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source' as const, scheduleAtSec: [0] },
+          { id: 'sink', kind: 'sink' as const }
+        ],
+        connections: [{ from: 'source', to: 'sink' }]
+      },
+      materialHandling: {
+        id: 'mh',
+        nodes: [
+          { id: 'west', type: 'dock' as const, x: 0, z: 5 },
+          { id: 'east', type: 'storage' as const, x: 10, z: 5 },
+          { id: 'south', type: 'dock' as const, x: 5, z: 0 },
+          { id: 'north', type: 'storage' as const, x: 5, z: 10 }
+        ],
+        paths: [
+          { id: 'west-east', from: 'west', to: 'east', bidirectional: false, trafficControl: 'reservation', capacity: 1 },
+          { id: 'south-north', from: 'south', to: 'north', bidirectional: false, trafficControl: 'reservation', capacity: 1 }
+        ],
+        transporterFleets: [{ id: 'amr', count: 2, homeNodeId: 'west', speedMps: 1, lengthM: 1, widthM: 1 }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 20 }]
+    });
+    const materialHandling = model.materialHandling!;
+
+    const verification = verifyMaterialHandlingMotion({
+      model,
+      snapshot: {
+        nodes: materialHandling.nodes,
+        transporterUnits: [
+          { id: 'amr-1', fleetId: 'amr', status: 'busy', currentNodeId: 'west', assignedEntityId: 'order-1' },
+          { id: 'amr-2', fleetId: 'amr', status: 'busy', currentNodeId: 'south', assignedEntityId: 'order-2' }
+        ],
+        obstacles: []
+      },
+      activeTransports: [
+        {
+          transporterUnitId: 'amr-1',
+          fleetId: 'amr',
+          entityId: 'order-1',
+          blockId: 'move',
+          endSec: 10,
+          emptyRouteNodeIds: ['west'],
+          emptyTravelStartSec: 0,
+          emptyTravelEndSec: 0,
+          loadStartSec: 0,
+          loadEndSec: 0,
+          loadedRouteNodeIds: ['west', 'east'],
+          loadedTravelStartSec: 0,
+          loadedTravelEndSec: 10,
+          unloadStartSec: 10,
+          unloadEndSec: 10,
+          loadedToNodeId: 'east'
+        },
+        {
+          transporterUnitId: 'amr-2',
+          fleetId: 'amr',
+          entityId: 'order-2',
+          blockId: 'move',
+          endSec: 10,
+          emptyRouteNodeIds: ['south'],
+          emptyTravelStartSec: 0,
+          emptyTravelEndSec: 0,
+          loadStartSec: 0,
+          loadEndSec: 0,
+          loadedRouteNodeIds: ['south', 'north'],
+          loadedTravelStartSec: 0,
+          loadedTravelEndSec: 10,
+          unloadStartSec: 10,
+          unloadEndSec: 10,
+          loadedToNodeId: 'north'
+        }
+      ],
+      nowSec: 1,
+      options: { tickSec: 0.2 }
+    });
+
+    expect(verification.routeConflicts).toHaveLength(1);
+    expect(verification.warnings.some((warning) => warning.code === 'motion.route-crossing-projection')).toBe(true);
+  });
 });

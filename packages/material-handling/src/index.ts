@@ -110,6 +110,71 @@ function distance2d(left: MaterialNodeDefinition, right: MaterialNodeDefinition)
   return Math.hypot(right.x - left.x, right.z - left.z);
 }
 
+type Point2 = {
+  x: number;
+  z: number;
+};
+
+type RectEnvelope = {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+};
+
+function orientation(a: Point2, b: Point2, c: Point2): number {
+  return (b.z - a.z) * (c.x - b.x) - (b.x - a.x) * (c.z - b.z);
+}
+
+function onSegment(a: Point2, b: Point2, c: Point2): boolean {
+  const epsilon = 1e-9;
+  return (
+    Math.min(a.x, c.x) - epsilon <= b.x &&
+    b.x <= Math.max(a.x, c.x) + epsilon &&
+    Math.min(a.z, c.z) - epsilon <= b.z &&
+    b.z <= Math.max(a.z, c.z) + epsilon
+  );
+}
+
+function segmentsIntersect(a: Point2, b: Point2, c: Point2, d: Point2): boolean {
+  const epsilon = 1e-9;
+  const o1 = orientation(a, b, c);
+  const o2 = orientation(a, b, d);
+  const o3 = orientation(c, d, a);
+  const o4 = orientation(c, d, b);
+
+  if (Math.abs(o1) <= epsilon && onSegment(a, c, b)) return true;
+  if (Math.abs(o2) <= epsilon && onSegment(a, d, b)) return true;
+  if (Math.abs(o3) <= epsilon && onSegment(c, a, d)) return true;
+  if (Math.abs(o4) <= epsilon && onSegment(c, b, d)) return true;
+
+  return (o1 > 0) !== (o2 > 0) && (o3 > 0) !== (o4 > 0);
+}
+
+function inflateObstacle(
+  obstacle: MaterialHandlingDefinition['obstacles'][number],
+  clearanceM: number
+): RectEnvelope {
+  return {
+    minX: obstacle.x - obstacle.widthM / 2 - clearanceM,
+    maxX: obstacle.x + obstacle.widthM / 2 + clearanceM,
+    minZ: obstacle.z - obstacle.depthM / 2 - clearanceM,
+    maxZ: obstacle.z + obstacle.depthM / 2 + clearanceM
+  };
+}
+
+function segmentIntersectsRect(from: Point2, to: Point2, rect: RectEnvelope): boolean {
+  const corners = [
+    { x: rect.minX, z: rect.minZ },
+    { x: rect.maxX, z: rect.minZ },
+    { x: rect.maxX, z: rect.maxZ },
+    { x: rect.minX, z: rect.maxZ }
+  ];
+  if (from.x >= rect.minX && from.x <= rect.maxX && from.z >= rect.minZ && from.z <= rect.maxZ) return true;
+  if (to.x >= rect.minX && to.x <= rect.maxX && to.z >= rect.minZ && to.z <= rect.maxZ) return true;
+  return corners.some((corner, index) => segmentsIntersect(from, to, corner, corners[(index + 1) % corners.length]!));
+}
+
 export function calculateTravelProfile(
   distanceM: number,
   maxSpeedMps: number,
@@ -581,6 +646,18 @@ export function analyzeMaterialHandlingDefinition(definition: MaterialHandlingDe
   const parsed = MaterialHandlingDefinitionSchema.parse(definition);
   const diagnostics: MaterialHandlingDiagnostic[] = [];
   const directedPairs = new Map<string, string[]>();
+  const nodesById = new Map(parsed.nodes.map((node) => [node.id, node]));
+  const pathSegments = parsed.paths
+    .filter((path) => path.mode !== 'conveyor')
+    .map((path) => ({
+      path,
+      from: nodesById.get(path.from),
+      to: nodesById.get(path.to)
+    }))
+    .filter((entry): entry is { path: MaterialPathDefinition; from: MaterialNodeDefinition; to: MaterialNodeDefinition } =>
+      Boolean(entry.from && entry.to)
+    );
+  const maxFleetClearanceM = Math.max(0.25, ...parsed.transporterFleets.map((fleet) => fleet.minClearanceM ?? 0));
 
   for (const path of parsed.paths) {
     const forwardKey = `${path.from}->${path.to}`;
@@ -599,6 +676,39 @@ export function analyzeMaterialHandlingDefinition(definition: MaterialHandlingDe
         path: 'materialHandling.paths',
         message: `Multiple paths serve ${pair}: ${pathIds.join(', ')}. Confirm this is intentional capacity, not duplicate aisle data.`
       });
+    }
+  }
+
+  for (let leftIndex = 0; leftIndex < pathSegments.length; leftIndex += 1) {
+    const left = pathSegments[leftIndex]!;
+    for (let rightIndex = leftIndex + 1; rightIndex < pathSegments.length; rightIndex += 1) {
+      const right = pathSegments[rightIndex]!;
+      const sharedNodeIds = new Set([left.path.from, left.path.to].filter((nodeId) => nodeId === right.path.from || nodeId === right.path.to));
+      if (sharedNodeIds.size > 0) {
+        continue;
+      }
+
+      if (segmentsIntersect(left.from, left.to, right.from, right.to)) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'material.unmodeled-path-crossing',
+          path: 'materialHandling.paths',
+          message: `Paths ${left.path.id} and ${right.path.id} cross geometrically without a shared node. Add an intersection node and split the paths so traffic reservations can protect the crossing.`
+        });
+      }
+    }
+  }
+
+  for (const segment of pathSegments) {
+    for (const obstacle of parsed.obstacles) {
+      if (segmentIntersectsRect(segment.from, segment.to, inflateObstacle(obstacle, maxFleetClearanceM))) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'material.path-obstacle-clearance',
+          path: `materialHandling.paths.${segment.path.id}`,
+          message: `Path ${segment.path.id} intersects obstacle ${obstacle.id} after applying ${maxFleetClearanceM.toFixed(2)}m fleet clearance.`
+        });
+      }
     }
   }
 

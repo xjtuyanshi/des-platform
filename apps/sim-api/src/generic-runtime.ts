@@ -1732,6 +1732,10 @@ export function renderGenericRuntimeViewer(studyId: string): string {
             <table id="motion"></table>
           </article>
           <article class="state-card">
+            <h3>Route Conflicts</h3>
+            <table id="routeConflicts"></table>
+          </article>
+          <article class="state-card">
             <h3>Motion Warnings</h3>
             <table id="motionWarnings"></table>
           </article>
@@ -2250,18 +2254,28 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         );
 
         const motion = snapshot?.motionVerification;
-        const warningCount = motion?.warnings?.length ?? 0;
         setTableRows(
           'motion',
-          ['Unit', 'State', 'Sep', 'Warnings', 'Lag'],
+          ['Unit', 'State', 'Sep', 'Route Conflicts', 'Lag'],
           (motion?.units ?? []).map((unit) => [
             unit.unitId,
             unit.avoidanceStatus + ' / ' + unit.status,
             unit.minSeparationM === null ? '-' : rounded(unit.minSeparationM) + 'm',
-            warningCount,
+            (motion?.routeConflicts ?? []).filter((conflict) => conflict.unitIds?.includes(unit.unitId)).length,
             rounded(unit.lagSec) + 's'
           ]),
           motion?.enabled === false ? 'Motion verification disabled' : 'No motion state'
+        );
+        setTableRows(
+          'routeConflicts',
+          ['Units', 'Routes', 'At', 'Time Delta'],
+          (motion?.routeConflicts ?? []).map((conflict) => [
+            conflict.unitIds.join(' / '),
+            conflict.routeLabels.join(' | '),
+            rounded(conflict.x) + ', ' + rounded(conflict.z),
+            rounded(conflict.timeDeltaSec) + 's'
+          ]),
+          'No projected route conflicts'
         );
         setTableRows(
           'motionWarnings',
@@ -2269,7 +2283,7 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           (motion?.warnings ?? []).map((warning) => [
             warning.code,
             warning.severity,
-            warning.unitId ?? '-',
+            warning.unitId ?? warning.unitIds?.join(' / ') ?? '-',
             warning.message
           ]),
           'No motion warnings'
@@ -2451,6 +2465,42 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           return { x: x + offset[0], y: y + offset[1] };
         }
 
+        const defs = svgEl('defs');
+        const layoutArrow = svgEl('marker', {
+          id: 'layoutArrow',
+          markerWidth: 10,
+          markerHeight: 10,
+          refX: 8,
+          refY: 3,
+          orient: 'auto',
+          markerUnits: 'strokeWidth'
+        });
+        layoutArrow.appendChild(svgEl('path', { d: 'M0,0 L0,6 L9,3 z', fill: '#8aa0b8' }));
+        const activeEmptyArrow = svgEl('marker', {
+          id: 'activeEmptyRouteArrow',
+          markerWidth: 10,
+          markerHeight: 10,
+          refX: 8,
+          refY: 3,
+          orient: 'auto',
+          markerUnits: 'strokeWidth'
+        });
+        activeEmptyArrow.appendChild(svgEl('path', { d: 'M0,0 L0,6 L9,3 z', fill: '#f08a2d' }));
+        const activeLoadedArrow = svgEl('marker', {
+          id: 'activeLoadedRouteArrow',
+          markerWidth: 10,
+          markerHeight: 10,
+          refX: 8,
+          refY: 3,
+          orient: 'auto',
+          markerUnits: 'strokeWidth'
+        });
+        activeLoadedArrow.appendChild(svgEl('path', { d: 'M0,0 L0,6 L9,3 z', fill: '#2f9b74' }));
+        defs.appendChild(layoutArrow);
+        defs.appendChild(activeEmptyArrow);
+        defs.appendChild(activeLoadedArrow);
+        svg.appendChild(defs);
+
         for (const path of material.paths ?? []) {
           const from = nodesById.get(path.from);
           const to = nodesById.get(path.to);
@@ -2463,7 +2513,43 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           line.setAttribute('stroke', '#6f86a1');
           line.setAttribute('stroke-width', '5');
           line.setAttribute('stroke-linecap', 'round');
+          line.setAttribute('marker-end', 'url(#layoutArrow)');
+          if (path.bidirectional) {
+            line.setAttribute('marker-start', 'url(#layoutArrow)');
+          }
+          if (path.trafficControl === 'none') {
+            line.setAttribute('stroke-dasharray', '10 8');
+          }
           svg.appendChild(line);
+        }
+
+        function drawRoute(routeNodeIds, color, waiting, markerId) {
+          for (let index = 0; index < routeNodeIds.length - 1; index += 1) {
+            const from = nodesById.get(routeNodeIds[index]);
+            const to = nodesById.get(routeNodeIds[index + 1]);
+            if (!from || !to) continue;
+            const line = svgEl('line', {
+              x1: s.x(from.x),
+              y1: s.y(from.z),
+              x2: s.x(to.x),
+              y2: s.y(to.z),
+              stroke: color,
+              'stroke-width': waiting ? 2.5 : 3.5,
+              'stroke-linecap': 'round',
+              'stroke-dasharray': waiting ? '7 6' : 'none',
+              'marker-end': 'url(#' + markerId + ')'
+            });
+            svg.appendChild(line);
+          }
+        }
+
+        for (const transport of snapshot.activeTransports ?? []) {
+          const phase = transportPhase(transport, snapshot.nowSec);
+          if (phase === 'waiting for empty route' || phase === 'empty travel') {
+            drawRoute(transport.emptyRouteNodeIds, '#f08a2d', phase === 'waiting for empty route', 'activeEmptyRouteArrow');
+          } else if (phase === 'waiting for loaded route' || phase === 'loaded travel') {
+            drawRoute(transport.loadedRouteNodeIds, '#2f9b74', phase === 'waiting for loaded route', 'activeLoadedRouteArrow');
+          }
         }
 
         for (const obstacle of material.obstacles ?? []) {
@@ -2475,6 +2561,24 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           rect.setAttribute('fill', '#8b4f4f');
           rect.setAttribute('opacity', '0.85');
           svg.appendChild(rect);
+        }
+
+        for (const conflict of snapshot.motionVerification?.routeConflicts ?? []) {
+          const x = s.x(conflict.x);
+          const y = s.y(conflict.z);
+          const circle = svgEl('circle', {
+            cx: x,
+            cy: y,
+            r: 15,
+            fill: 'none',
+            stroke: '#e14d4d',
+            'stroke-width': 3
+          });
+          const left = svgEl('line', { x1: x - 8, y1: y - 8, x2: x + 8, y2: y + 8, stroke: '#e14d4d', 'stroke-width': 3 });
+          const right = svgEl('line', { x1: x + 8, y1: y - 8, x2: x - 8, y2: y + 8, stroke: '#e14d4d', 'stroke-width': 3 });
+          svg.appendChild(circle);
+          svg.appendChild(left);
+          svg.appendChild(right);
         }
 
         for (const node of nodes) {

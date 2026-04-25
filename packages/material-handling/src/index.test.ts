@@ -155,6 +155,36 @@ describe('MaterialHandlingRuntime', () => {
     expect(diagnostics.some((diagnostic) => diagnostic.code === 'material.parallel-paths')).toBe(true);
   });
 
+  it('warns when path geometry crosses without a shared reservation node or obstacle clearance', () => {
+    const diagnostics = analyzeMaterialHandlingDefinition({
+      id: 'crossing-layout',
+      units: 'meter',
+      nodes: [
+        { id: 'west', type: 'dock', x: 0, z: 5 },
+        { id: 'east', type: 'storage', x: 10, z: 5 },
+        { id: 'south', type: 'dock', x: 5, z: 0 },
+        { id: 'north', type: 'storage', x: 5, z: 10 },
+        { id: 'safe-a', type: 'point', x: 0, z: 12 },
+        { id: 'safe-b', type: 'point', x: 10, z: 12 }
+      ],
+      paths: [
+        { id: 'west-east', from: 'west', to: 'east', bidirectional: false, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
+        { id: 'south-north', from: 'south', to: 'north', bidirectional: false, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
+        { id: 'safe-obstacle', from: 'safe-a', to: 'safe-b', bidirectional: false, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' }
+      ],
+      transporterFleets: [
+        { id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 2, homeNodeId: 'west', idlePolicy: 'stay', speedMps: 1.5, minClearanceM: 0.3 }
+      ],
+      storageSystems: [],
+      conveyors: [],
+      zones: [],
+      obstacles: [{ id: 'column', x: 5, z: 12, widthM: 1, depthM: 1, heightM: 3 }]
+    });
+
+    expect(diagnostics.some((diagnostic) => diagnostic.code === 'material.unmodeled-path-crossing')).toBe(true);
+    expect(diagnostics.some((diagnostic) => diagnostic.code === 'material.path-obstacle-clearance')).toBe(true);
+  });
+
   it('tracks storage occupancy and conveyor travel time', () => {
     const runtime = createMaterialHandlingRuntime(materialHandling);
 

@@ -104,10 +104,21 @@ export type MaterialMotionVerificationUnit = {
   lagSec: number;
 };
 
+export type MaterialMotionRouteConflict = {
+  unitIds: [string, string];
+  entityIds: [string | null, string | null];
+  routeLabels: [string, string];
+  x: number;
+  z: number;
+  timeSec: number;
+  timeDeltaSec: number;
+};
+
 export type MaterialMotionVerificationWarning = {
   code: string;
   severity: 'warning' | 'error';
   unitId?: string;
+  unitIds?: string[];
   message: string;
 };
 
@@ -117,6 +128,7 @@ export type MaterialMotionVerificationSnapshot = {
   clearanceM: number;
   maxLagSec: number;
   units: MaterialMotionVerificationUnit[];
+  routeConflicts: MaterialMotionRouteConflict[];
   warnings: MaterialMotionVerificationWarning[];
 };
 
@@ -918,7 +930,7 @@ export function verifyMaterialHandlingMotion(input: {
     maxLagSec: input.options?.maxLagSec ?? 2
   };
   if (!options.enabled || !input.snapshot || !input.model.materialHandling) {
-    return { ...options, enabled: false, units: [], warnings: [] };
+    return { ...options, enabled: false, units: [], routeConflicts: [], warnings: [] };
   }
 
   const materialSnapshot = input.snapshot;
@@ -926,6 +938,15 @@ export function verifyMaterialHandlingMotion(input: {
   const fleetsById = new Map(input.model.materialHandling.transporterFleets.map((fleet) => [fleet.id, fleet]));
   const activeByUnitId = new Map(input.activeTransports.map((transport) => [transport.transporterUnitId, transport]));
   const warnings: MaterialMotionVerificationWarning[] = [];
+  const routeConflicts = projectRouteConflicts(input.activeTransports, input.nowSec, nodesById, options.tickSec);
+  for (const conflict of routeConflicts) {
+    warnings.push({
+      code: 'motion.route-crossing-projection',
+      severity: 'warning',
+      unitIds: conflict.unitIds,
+      message: `${conflict.unitIds[0]} and ${conflict.unitIds[1]} are projected to reach an unmodeled path crossing within ${conflict.timeDeltaSec.toFixed(1)}s near t=${conflict.timeSec.toFixed(1)}s.`
+    });
+  }
   const units = materialSnapshot.transporterUnits.map((unit) => {
     const transport = activeByUnitId.get(unit.id);
     const fleet = fleetsById.get(unit.fleetId);
@@ -1012,8 +1033,180 @@ export function verifyMaterialHandlingMotion(input: {
     ...options,
     enabled: true,
     units,
+    routeConflicts,
     warnings
   };
+}
+
+type TimedRouteSegment = {
+  unitId: string;
+  entityId: string | null;
+  routeLabel: string;
+  fromNodeId: string;
+  toNodeId: string;
+  from: Point2;
+  to: Point2;
+  startSec: number;
+  endSec: number;
+};
+
+function projectRouteConflicts(
+  transports: ActiveTransportLike[],
+  nowSec: number,
+  nodesById: Map<string, Point2>,
+  tickSec: number
+): MaterialMotionRouteConflict[] {
+  const segments = transports.flatMap((transport) => timedSegmentsForTransport(transport, nowSec, nodesById));
+  const conflicts: MaterialMotionRouteConflict[] = [];
+  const seen = new Set<string>();
+  const coincidenceWindowSec = Math.max(1, tickSec * 3);
+
+  for (let leftIndex = 0; leftIndex < segments.length; leftIndex += 1) {
+    const left = segments[leftIndex]!;
+    for (let rightIndex = leftIndex + 1; rightIndex < segments.length; rightIndex += 1) {
+      const right = segments[rightIndex]!;
+      if (left.unitId === right.unitId) continue;
+      if (left.endSec < nowSec || right.endSec < nowSec) continue;
+      if (left.startSec > right.endSec + coincidenceWindowSec || right.startSec > left.endSec + coincidenceWindowSec) continue;
+      if (segmentsShareNode(left, right)) continue;
+
+      const intersection = segmentIntersectionPoint(left.from, left.to, right.from, right.to);
+      if (!intersection) continue;
+
+      const leftTimeSec = timeAtPoint(left, intersection);
+      const rightTimeSec = timeAtPoint(right, intersection);
+      if (leftTimeSec < nowSec || rightTimeSec < nowSec) continue;
+
+      const timeDeltaSec = Math.abs(leftTimeSec - rightTimeSec);
+      if (timeDeltaSec > coincidenceWindowSec) continue;
+
+      const unitIds = [left.unitId, right.unitId].sort() as [string, string];
+      const key = `${unitIds.join('|')}|${intersection.x.toFixed(2)}|${intersection.z.toFixed(2)}|${Math.round(Math.min(leftTimeSec, rightTimeSec))}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      conflicts.push({
+        unitIds: [left.unitId, right.unitId],
+        entityIds: [left.entityId, right.entityId],
+        routeLabels: [left.routeLabel, right.routeLabel],
+        x: intersection.x,
+        z: intersection.z,
+        timeSec: Math.min(leftTimeSec, rightTimeSec),
+        timeDeltaSec
+      });
+    }
+  }
+
+  return conflicts;
+}
+
+function timedSegmentsForTransport(
+  transport: ActiveTransportLike,
+  nowSec: number,
+  nodesById: Map<string, Point2>
+): TimedRouteSegment[] {
+  return [
+    ...timedSegmentsForRoute(
+      transport,
+      transport.emptyRouteNodeIds,
+      transport.emptyTravelStartSec,
+      transport.emptyTravelEndSec,
+      'empty',
+      nowSec,
+      nodesById
+    ),
+    ...timedSegmentsForRoute(
+      transport,
+      transport.loadedRouteNodeIds,
+      transport.loadedTravelStartSec,
+      transport.loadedTravelEndSec,
+      'loaded',
+      nowSec,
+      nodesById
+    )
+  ];
+}
+
+function timedSegmentsForRoute(
+  transport: ActiveTransportLike,
+  routeNodeIds: string[],
+  startSec: number,
+  endSec: number,
+  phase: 'empty' | 'loaded',
+  nowSec: number,
+  nodesById: Map<string, Point2>
+): TimedRouteSegment[] {
+  if (routeNodeIds.length < 2 || endSec <= startSec || endSec < nowSec) return [];
+  const points = routeNodeIds.map((nodeId) => ({ nodeId, point: nodesById.get(nodeId) })).filter((entry): entry is { nodeId: string; point: Point2 } => Boolean(entry.point));
+  if (points.length < 2) return [];
+
+  const lengths = points.slice(0, -1).map((entry, index) => distance2d(entry.point, points[index + 1]!.point));
+  const totalDistance = lengths.reduce((sum, length) => sum + length, 0);
+  if (totalDistance <= 0) return [];
+
+  const segments: TimedRouteSegment[] = [];
+  let elapsedDistance = 0;
+  for (let index = 0; index < lengths.length; index += 1) {
+    const segmentDistance = lengths[index]!;
+    const segmentStartSec = startSec + (elapsedDistance / totalDistance) * (endSec - startSec);
+    elapsedDistance += segmentDistance;
+    const segmentEndSec = startSec + (elapsedDistance / totalDistance) * (endSec - startSec);
+    if (segmentEndSec < nowSec) continue;
+    segments.push({
+      unitId: transport.transporterUnitId,
+      entityId: transport.entityId,
+      routeLabel: `${phase}:${points[index]!.nodeId}->${points[index + 1]!.nodeId}`,
+      fromNodeId: points[index]!.nodeId,
+      toNodeId: points[index + 1]!.nodeId,
+      from: points[index]!.point,
+      to: points[index + 1]!.point,
+      startSec: segmentStartSec,
+      endSec: segmentEndSec
+    });
+  }
+
+  return segments;
+}
+
+function segmentsShareNode(left: TimedRouteSegment, right: TimedRouteSegment): boolean {
+  return left.fromNodeId === right.fromNodeId ||
+    left.fromNodeId === right.toNodeId ||
+    left.toNodeId === right.fromNodeId ||
+    left.toNodeId === right.toNodeId;
+}
+
+function segmentIntersectionPoint(a: Point2, b: Point2, c: Point2, d: Point2): Point2 | null {
+  const denominator = (a.x - b.x) * (c.z - d.z) - (a.z - b.z) * (c.x - d.x);
+  const epsilon = 1e-9;
+  if (Math.abs(denominator) <= epsilon) {
+    return null;
+  }
+  const detLeft = a.x * b.z - a.z * b.x;
+  const detRight = c.x * d.z - c.z * d.x;
+  const x = (detLeft * (c.x - d.x) - (a.x - b.x) * detRight) / denominator;
+  const z = (detLeft * (c.z - d.z) - (a.z - b.z) * detRight) / denominator;
+  const point = { x, z };
+  return pointOnSegment(a, point, b) && pointOnSegment(c, point, d) ? point : null;
+}
+
+function pointOnSegment(from: Point2, point: Point2, to: Point2): boolean {
+  const epsilon = 1e-7;
+  const cross = (point.z - from.z) * (to.x - from.x) - (point.x - from.x) * (to.z - from.z);
+  if (Math.abs(cross) > epsilon) return false;
+  return (
+    Math.min(from.x, to.x) - epsilon <= point.x &&
+    point.x <= Math.max(from.x, to.x) + epsilon &&
+    Math.min(from.z, to.z) - epsilon <= point.z &&
+    point.z <= Math.max(from.z, to.z) + epsilon
+  );
+}
+
+function timeAtPoint(segment: TimedRouteSegment, point: Point2): number {
+  const segmentLength = distance2d(segment.from, segment.to);
+  if (segmentLength <= 0) return segment.startSec;
+  const distanceToPoint = distance2d(segment.from, point);
+  const fraction = Math.max(0, Math.min(1, distanceToPoint / segmentLength));
+  return segment.startSec + fraction * (segment.endSec - segment.startSec);
 }
 
 function materialTransportPhase(transport: ActiveTransportLike, nowSec: number): MaterialMotionVerificationUnit['status'] {
