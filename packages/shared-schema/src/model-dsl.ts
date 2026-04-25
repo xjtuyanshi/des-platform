@@ -216,6 +216,8 @@ export const MaterialPathDefinitionSchema = z.object({
   bidirectional: z.boolean().default(true),
   lengthM: z.number().positive().optional(),
   speedLimitMps: z.number().positive().optional(),
+  trafficControl: z.enum(['reservation', 'none']).default('reservation'),
+  capacity: z.number().int().positive().default(1),
   mode: z.enum(['path-guided', 'free-space', 'conveyor']).default('path-guided')
 });
 

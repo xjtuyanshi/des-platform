@@ -86,6 +86,9 @@ export type RuntimeTransporterFleetStats = {
   totalEmptyDistanceM: number;
   totalLoadedDistanceM: number;
   totalDistanceM: number;
+  totalTrafficWaitTimeSec: number;
+  totalEmptyTrafficWaitTimeSec: number;
+  totalLoadedTrafficWaitTimeSec: number;
   totalEmptyTravelTimeSec: number;
   totalLoadedTravelTimeSec: number;
   totalTravelTimeSec: number;
@@ -142,6 +145,9 @@ type TransportCompletePayload = {
   busyDurationSec: number;
   emptyDistanceM: number;
   loadedDistanceM: number;
+  trafficWaitSec: number;
+  emptyTrafficWaitSec: number;
+  loadedTrafficWaitSec: number;
   emptyTravelTimeSec: number;
   loadedTravelTimeSec: number;
 };
@@ -173,6 +179,9 @@ function asTransportCompletePayload(payload: DesEventPayload): TransportComplete
     busyDurationSec: Number(payload.busyDurationSec),
     emptyDistanceM: Number(payload.emptyDistanceM),
     loadedDistanceM: Number(payload.loadedDistanceM),
+    trafficWaitSec: Number(payload.trafficWaitSec),
+    emptyTrafficWaitSec: Number(payload.emptyTrafficWaitSec),
+    loadedTrafficWaitSec: Number(payload.loadedTrafficWaitSec),
     emptyTravelTimeSec: Number(payload.emptyTravelTimeSec),
     loadedTravelTimeSec: Number(payload.loadedTravelTimeSec)
   };
@@ -345,6 +354,9 @@ export class ProcessFlowRuntime {
       totalBusyTimeSec: 0,
       totalEmptyDistanceM: 0,
       totalLoadedDistanceM: 0,
+      totalTrafficWaitTimeSec: 0,
+      totalEmptyTrafficWaitTimeSec: 0,
+      totalLoadedTrafficWaitTimeSec: 0,
       totalEmptyTravelTimeSec: 0,
       totalLoadedTravelTimeSec: 0
     };
@@ -520,6 +532,9 @@ export class ProcessFlowRuntime {
     stats.totalBusyTimeSec += payload.busyDurationSec;
     stats.totalEmptyDistanceM += payload.emptyDistanceM;
     stats.totalLoadedDistanceM += payload.loadedDistanceM;
+    stats.totalTrafficWaitTimeSec += payload.trafficWaitSec;
+    stats.totalEmptyTrafficWaitTimeSec += payload.emptyTrafficWaitSec;
+    stats.totalLoadedTrafficWaitTimeSec += payload.loadedTrafficWaitSec;
     stats.totalEmptyTravelTimeSec += payload.emptyTravelTimeSec;
     stats.totalLoadedTravelTimeSec += payload.loadedTravelTimeSec;
     materialHandling.releaseTransporter(payload.transporterUnitId, payload.toNodeId);
@@ -666,20 +681,25 @@ export class ProcessFlowRuntime {
     unit: TransporterUnitState
   ): void {
     const materialHandling = this.requireMaterialHandling(request.blockId);
-    const emptyRoute = materialHandling.findShortestRoute(unit.currentNodeId, request.fromNodeId, request.fleetId);
-    const loadedRoute = materialHandling.findShortestRoute(request.fromNodeId, request.toNodeId, request.fleetId);
+    const emptyRoute = materialHandling.reserveRoute(unit.currentNodeId, request.fromNodeId, request.fleetId, sim.nowSec);
+    const loadedReadyAtSec = emptyRoute.travelEndSec + request.loadTimeSec;
+    const loadedRoute = materialHandling.reserveRoute(request.fromNodeId, request.toNodeId, request.fleetId, loadedReadyAtSec);
     const routeDistanceM = emptyRoute.distanceM + loadedRoute.distanceM;
     const routeTravelTimeSec = emptyRoute.travelTimeSec + loadedRoute.travelTimeSec;
-    const busyDurationSec = request.loadTimeSec + routeTravelTimeSec + request.unloadTimeSec;
+    const routeTrafficWaitSec = emptyRoute.trafficWaitSec + loadedRoute.trafficWaitSec;
+    const busyDurationSec = loadedRoute.travelEndSec + request.unloadTimeSec - sim.nowSec;
     const entity = this.requireEntity(request.entityId);
     entity.attributes.lastEmptyRouteDistanceM = emptyRoute.distanceM;
     entity.attributes.lastEmptyRouteTravelTimeSec = emptyRoute.travelTimeSec;
+    entity.attributes.lastEmptyRouteTrafficWaitSec = emptyRoute.trafficWaitSec;
     entity.attributes.lastEmptyRoutePath = emptyRoute.pathIds.join('>');
     entity.attributes.lastLoadedRouteDistanceM = loadedRoute.distanceM;
     entity.attributes.lastLoadedRouteTravelTimeSec = loadedRoute.travelTimeSec;
+    entity.attributes.lastLoadedRouteTrafficWaitSec = loadedRoute.trafficWaitSec;
     entity.attributes.lastLoadedRoutePath = loadedRoute.pathIds.join('>');
     entity.attributes.lastRouteDistanceM = routeDistanceM;
     entity.attributes.lastRouteTravelTimeSec = routeTravelTimeSec;
+    entity.attributes.lastRouteTrafficWaitSec = routeTrafficWaitSec;
     entity.attributes.lastRoutePath = [...emptyRoute.pathIds, ...loadedRoute.pathIds].join('>');
 
     sim.scheduleIn(
@@ -694,6 +714,9 @@ export class ProcessFlowRuntime {
         busyDurationSec,
         emptyDistanceM: emptyRoute.distanceM,
         loadedDistanceM: loadedRoute.distanceM,
+        trafficWaitSec: routeTrafficWaitSec,
+        emptyTrafficWaitSec: emptyRoute.trafficWaitSec,
+        loadedTrafficWaitSec: loadedRoute.trafficWaitSec,
         emptyTravelTimeSec: emptyRoute.travelTimeSec,
         loadedTravelTimeSec: loadedRoute.travelTimeSec
       },

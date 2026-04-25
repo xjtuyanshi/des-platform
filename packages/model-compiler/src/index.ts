@@ -39,6 +39,9 @@ export type GenericTransporterFleetSummary = {
   totalDistanceM: number;
   totalEmptyDistanceM: number;
   totalLoadedDistanceM: number;
+  totalTrafficWaitTimeSec: number;
+  totalEmptyTrafficWaitTimeSec: number;
+  totalLoadedTrafficWaitTimeSec: number;
   totalTravelTimeSec: number;
 };
 
@@ -319,6 +322,9 @@ function buildGenericRunResult(
         totalDistanceM: fleet.totalDistanceM,
         totalEmptyDistanceM: fleet.totalEmptyDistanceM,
         totalLoadedDistanceM: fleet.totalLoadedDistanceM,
+        totalTrafficWaitTimeSec: fleet.totalTrafficWaitTimeSec,
+        totalEmptyTrafficWaitTimeSec: fleet.totalEmptyTrafficWaitTimeSec,
+        totalLoadedTrafficWaitTimeSec: fleet.totalLoadedTrafficWaitTimeSec,
         totalTravelTimeSec: fleet.totalTravelTimeSec
       })),
       entities

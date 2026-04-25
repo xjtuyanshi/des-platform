@@ -92,6 +92,7 @@ It is intentionally code/data based instead of drag-and-drop based:
 - `@des-platform/process-flow` executes the model on `@des-platform/des-core`.
 - `@des-platform/material-handling` provides the first generic material-flow runtime layer for `MoveByTransporter`, `Store`, `Retrieve`, and `Convey` blocks.
 - Transporter moves include empty travel from the vehicle's current node to the pickup node plus loaded travel to the destination node.
+- Path-guided material handling routes use lightweight traffic-control reservations, so shared aisles can serialize AMR/AGV movement by path `capacity`.
 - Runtime outputs include resource utilization, resource wait times, transporter requests, transporter wait times, empty travel, loaded travel, and total transporter distance.
 - The machine-readable AI block catalog is generated at `config/catalog/des-library-catalog.json`.
 - Generated JSON Schemas include `process-flow.schema.json`, `material-handling.schema.json`, and `model-dsl.schema.json`.

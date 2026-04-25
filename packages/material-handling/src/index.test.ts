@@ -12,9 +12,9 @@ const materialHandling: MaterialHandlingDefinition = {
     { id: 'pack', type: 'station', x: 18, z: 8 }
   ],
   paths: [
-    { id: 'home-dock', from: 'home', to: 'dock', lengthM: 10, speedLimitMps: 2, mode: 'path-guided', bidirectional: true },
-    { id: 'dock-storage', from: 'dock', to: 'storage', lengthM: 8, speedLimitMps: 1, mode: 'path-guided', bidirectional: true },
-    { id: 'storage-pack', from: 'storage', to: 'pack', lengthM: 8, mode: 'path-guided', bidirectional: true }
+    { id: 'home-dock', from: 'home', to: 'dock', lengthM: 10, speedLimitMps: 2, mode: 'path-guided', bidirectional: true, trafficControl: 'reservation', capacity: 1 },
+    { id: 'dock-storage', from: 'dock', to: 'storage', lengthM: 8, speedLimitMps: 1, mode: 'path-guided', bidirectional: true, trafficControl: 'reservation', capacity: 1 },
+    { id: 'storage-pack', from: 'storage', to: 'pack', lengthM: 8, mode: 'path-guided', bidirectional: true, trafficControl: 'reservation', capacity: 1 }
   ],
   transporterFleets: [
     { id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 2, homeNodeId: 'home', speedMps: 1.5, minClearanceM: 0.3 }
@@ -35,6 +35,21 @@ describe('MaterialHandlingRuntime', () => {
     expect(route.pathIds).toEqual(['home-dock', 'dock-storage', 'storage-pack']);
     expect(route.distanceM).toBe(26);
     expect(route.travelTimeSec).toBeCloseTo(10 / 2 + 8 / 1 + 8 / 1.5, 5);
+  });
+
+  it('reserves path-guided aisle capacity to serialize conflicting moves', () => {
+    const runtime = createMaterialHandlingRuntime(materialHandling);
+
+    const first = runtime.reserveRoute('dock', 'storage', 'amr', 0);
+    const second = runtime.reserveRoute('dock', 'storage', 'amr', 0);
+    const third = runtime.reserveRoute('storage', 'dock', 'amr', 4);
+
+    expect(first.travelTimeSec).toBe(8);
+    expect(first.trafficWaitSec).toBe(0);
+    expect(second.trafficWaitSec).toBe(8);
+    expect(second.travelEndSec).toBe(16);
+    expect(third.trafficWaitSec).toBe(12);
+    expect(runtime.getSnapshot().pathReservations.find((path) => path.pathId === 'dock-storage')?.reservations).toHaveLength(3);
   });
 
   it('seizes and releases transporter units deterministically', () => {

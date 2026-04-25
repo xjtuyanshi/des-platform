@@ -15,6 +15,27 @@ export type MaterialRoutePlan = {
   travelTimeSec: number;
 };
 
+export type MaterialRouteSegmentReservation = {
+  pathId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  distanceM: number;
+  travelTimeSec: number;
+  requestedStartSec: number;
+  startSec: number;
+  endSec: number;
+  trafficWaitSec: number;
+};
+
+export type MaterialReservedRoutePlan = MaterialRoutePlan & {
+  requestedStartSec: number;
+  travelStartSec: number;
+  travelEndSec: number;
+  trafficWaitSec: number;
+  reservedDurationSec: number;
+  segments: MaterialRouteSegmentReservation[];
+};
+
 export type TransporterUnitState = {
   id: string;
   fleetId: string;
@@ -38,6 +59,7 @@ export type StorageSystemState = {
 export type MaterialHandlingSnapshot = {
   nodes: MaterialNodeDefinition[];
   paths: MaterialPathDefinition[];
+  pathReservations: PathReservationState[];
   transporterUnits: TransporterUnitState[];
   storageSystems: StorageSystemState[];
   conveyors: ConveyorDefinition[];
@@ -53,6 +75,15 @@ type PathEdge = {
   speedMps: number | null;
 };
 
+export type PathReservationState = {
+  pathId: string;
+  capacity: number;
+  reservations: Array<{
+    startSec: number;
+    endSec: number;
+  }>;
+};
+
 function distance2d(left: MaterialNodeDefinition, right: MaterialNodeDefinition): number {
   return Math.hypot(right.x - left.x, right.z - left.z);
 }
@@ -63,6 +94,7 @@ export class MaterialHandlingRuntime {
   private readonly adjacency = new Map<string, PathEdge[]>();
   private readonly transporterUnits = new Map<string, TransporterUnitState>();
   private readonly storageSystems = new Map<string, StorageSystemState>();
+  private readonly pathReservations = new Map<string, Array<{ startSec: number; endSec: number }>>();
 
   constructor(definition: MaterialHandlingDefinition) {
     this.definition = MaterialHandlingDefinitionSchema.parse(definition);
@@ -92,6 +124,11 @@ export class MaterialHandlingRuntime {
     return {
       nodes: [...this.nodeMap.values()].map((node) => ({ ...node })),
       paths: this.definition.paths.map((path) => ({ ...path })),
+      pathReservations: this.definition.paths.map((path) => ({
+        pathId: path.id,
+        capacity: path.capacity,
+        reservations: (this.pathReservations.get(path.id) ?? []).map((reservation) => ({ ...reservation }))
+      })),
       transporterUnits: [...this.transporterUnits.values()].map((unit) => ({ ...unit })),
       storageSystems: [...this.storageSystems.values()].map((storage) => ({
         ...storage,
@@ -149,6 +186,59 @@ export class MaterialHandlingRuntime {
     }
 
     throw new Error(`No material handling route between ${startNodeId} and ${endNodeId}`);
+  }
+
+  reserveRoute(startNodeId: string, endNodeId: string, fleetId: string | undefined, requestedStartSec: number): MaterialReservedRoutePlan {
+    const route = this.findShortestRoute(startNodeId, endNodeId, fleetId);
+    if (route.pathIds.length === 0) {
+      return {
+        ...route,
+        requestedStartSec,
+        travelStartSec: requestedStartSec,
+        travelEndSec: requestedStartSec,
+        trafficWaitSec: 0,
+        reservedDurationSec: 0,
+        segments: []
+      };
+    }
+
+    const segments: MaterialRouteSegmentReservation[] = [];
+    let currentSec = requestedStartSec;
+    let trafficWaitSec = 0;
+
+    for (let index = 0; index < route.pathIds.length; index += 1) {
+      const fromNodeId = route.nodeIds[index]!;
+      const toNodeId = route.nodeIds[index + 1]!;
+      const edge = this.requireEdge(fromNodeId, toNodeId, route.pathIds[index]!);
+      const speedMps = edge.speedMps ?? (fleetId ? this.requireFleet(fleetId).speedMps : 1);
+      const travelTimeSec = edge.distanceM / speedMps;
+      const startSec = this.reservePath(edge.path, currentSec, travelTimeSec);
+      const endSec = startSec + travelTimeSec;
+      const segmentWaitSec = startSec - currentSec;
+      trafficWaitSec += segmentWaitSec;
+      segments.push({
+        pathId: edge.path.id,
+        fromNodeId,
+        toNodeId,
+        distanceM: edge.distanceM,
+        travelTimeSec,
+        requestedStartSec: currentSec,
+        startSec,
+        endSec,
+        trafficWaitSec: segmentWaitSec
+      });
+      currentSec = endSec;
+    }
+
+    return {
+      ...route,
+      requestedStartSec,
+      travelStartSec: segments[0]?.startSec ?? requestedStartSec,
+      travelEndSec: currentSec,
+      trafficWaitSec,
+      reservedDurationSec: currentSec - requestedStartSec,
+      segments
+    };
   }
 
   seizeTransporter(fleetId: string, entityId: string): TransporterUnitState | null {
@@ -225,6 +315,38 @@ export class MaterialHandlingRuntime {
     });
   }
 
+  private reservePath(path: MaterialPathDefinition, requestedStartSec: number, durationSec: number): number {
+    if (path.trafficControl === 'none' || durationSec <= 0) {
+      return requestedStartSec;
+    }
+
+    const reservations = this.pathReservations.get(path.id) ?? [];
+    const startSec = this.findEarliestReservationStart(reservations, path.capacity, requestedStartSec, durationSec);
+    reservations.push({ startSec, endSec: startSec + durationSec });
+    reservations.sort((left, right) => left.startSec - right.startSec || left.endSec - right.endSec);
+    this.pathReservations.set(path.id, reservations);
+    return startSec;
+  }
+
+  private findEarliestReservationStart(
+    reservations: Array<{ startSec: number; endSec: number }>,
+    capacity: number,
+    requestedStartSec: number,
+    durationSec: number
+  ): number {
+    let candidateStartSec = requestedStartSec;
+
+    while (true) {
+      const candidateEndSec = candidateStartSec + durationSec;
+      const overlapping = reservations.filter((reservation) => reservation.startSec < candidateEndSec && candidateStartSec < reservation.endSec);
+      if (overlapping.length < capacity) {
+        return candidateStartSec;
+      }
+
+      candidateStartSec = Math.min(...overlapping.map((reservation) => reservation.endSec));
+    }
+  }
+
   private createTransporterUnits(fleet: TransporterFleetDefinition): void {
     for (let index = 1; index <= fleet.count; index += 1) {
       const id = `${fleet.id}-${index}`;
@@ -284,6 +406,14 @@ export class MaterialHandlingRuntime {
       throw new Error(`Unknown material handling node ${nodeId}`);
     }
     return node;
+  }
+
+  private requireEdge(fromNodeId: string, toNodeId: string, pathId: string): PathEdge {
+    const edge = (this.adjacency.get(fromNodeId) ?? []).find((candidate) => candidate.to === toNodeId && candidate.path.id === pathId);
+    if (!edge) {
+      throw new Error(`Unknown material handling edge ${pathId} from ${fromNodeId} to ${toNodeId}`);
+    }
+    return edge;
   }
 
   private requireFleet(fleetId: string): TransporterFleetDefinition {

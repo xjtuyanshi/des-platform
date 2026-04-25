@@ -179,6 +179,7 @@ function renderRunSections(result: GenericDesRunResult): string {
           <td>${fleet.completedMoves}</td>
           <td>${formatPercent(fleet.utilization)}</td>
           <td>${formatNumber(fleet.averageWaitTimeSec)} s</td>
+          <td>${formatNumber(fleet.totalTrafficWaitTimeSec)} s</td>
           <td>${formatNumber(fleet.totalDistanceM)} m</td>
           <td>${formatNumber(fleet.totalEmptyDistanceM)} m</td>
           <td>${formatNumber(fleet.totalLoadedDistanceM)} m</td>
@@ -226,8 +227,8 @@ function renderRunSections(result: GenericDesRunResult): string {
       <article>
         <h2>Transporter Fleets</h2>
         <table>
-          <thead><tr><th>Fleet</th><th>Requests</th><th>Completed</th><th>Utilization</th><th>Avg Wait</th><th>Total Distance</th><th>Empty</th><th>Loaded</th></tr></thead>
-          <tbody>${transporterRows || '<tr><td colspan="8">No transporter fleet activity.</td></tr>'}</tbody>
+          <thead><tr><th>Fleet</th><th>Requests</th><th>Completed</th><th>Utilization</th><th>Avg Wait</th><th>Traffic Wait</th><th>Total Distance</th><th>Empty</th><th>Loaded</th></tr></thead>
+          <tbody>${transporterRows || '<tr><td colspan="9">No transporter fleet activity.</td></tr>'}</tbody>
         </table>
       </article>
     </section>

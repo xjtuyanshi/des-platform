@@ -287,4 +287,39 @@ describe('shared schema', () => {
       })
     ).toThrow(/probabilities cannot sum above 1/);
   });
+
+  it('defaults material path traffic control to reservation capacity one', () => {
+    const model = AiNativeDesModelDefinitionSchema.parse({
+      schemaVersion: 'des-platform.v1',
+      id: 'traffic-control-defaults',
+      name: 'Traffic Control Defaults',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'move', kind: 'moveByTransporter', fleetId: 'amr', fromNodeId: 'dock', toNodeId: 'rack' },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [
+          { from: 'source', to: 'move' },
+          { from: 'move', to: 'sink' }
+        ]
+      },
+      materialHandling: {
+        id: 'layout',
+        nodes: [
+          { id: 'dock', x: 0, z: 0 },
+          { id: 'rack', x: 10, z: 0 }
+        ],
+        paths: [{ id: 'dock-rack', from: 'dock', to: 'rack' }],
+        transporterFleets: [{ id: 'amr', count: 1, homeNodeId: 'dock', speedMps: 1 }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 100 }]
+    });
+
+    expect(model.materialHandling?.paths[0]).toMatchObject({
+      trafficControl: 'reservation',
+      capacity: 1
+    });
+  });
 });

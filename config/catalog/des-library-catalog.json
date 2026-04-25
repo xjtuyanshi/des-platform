@@ -350,7 +350,8 @@
       ],
       "constraints": [
         "Requires materialHandling.",
-        "A route must exist from current vehicle node to pickup and from pickup to dropoff."
+        "A route must exist from current vehicle node to pickup and from pickup to dropoff.",
+        "Path-guided routes use path traffic-control reservations unless a path has trafficControl set to none."
       ],
       "example": {
         "id": "move-to-pack",
@@ -461,7 +462,7 @@
           "id": "paths",
           "type": "MaterialPath[]",
           "required": false,
-          "description": "Directed or bidirectional travel links."
+          "description": "Directed or bidirectional travel links with optional speed limits, trafficControl, and capacity."
         },
         {
           "id": "transporterFleets",
@@ -496,7 +497,8 @@
       ],
       "constraints": [
         "All references must point to defined node ids.",
-        "Storage slotIds length must match capacity when slotIds are provided."
+        "Storage slotIds length must match capacity when slotIds are provided.",
+        "Path trafficControl defaults to reservation and path capacity defaults to 1."
       ],
       "example": {
         "id": "layout",
@@ -506,6 +508,15 @@
             "type": "dock",
             "x": 0,
             "z": 0
+          }
+        ],
+        "paths": [
+          {
+            "id": "dock-rack",
+            "from": "dock",
+            "to": "rack",
+            "trafficControl": "reservation",
+            "capacity": 1
           }
         ],
         "transporterFleets": [

@@ -209,7 +209,7 @@ describe('ProcessFlowRuntime', () => {
         { id: 'pack', type: 'station', x: 10, z: 5 },
         { id: 'ship', type: 'dock', x: 20, z: 5 }
       ],
-      paths: [{ id: 'dock-storage', from: 'dock', to: 'storage', lengthM: 10, speedLimitMps: 2, bidirectional: true, mode: 'path-guided' }],
+      paths: [{ id: 'dock-storage', from: 'dock', to: 'storage', lengthM: 10, speedLimitMps: 2, bidirectional: true, mode: 'path-guided', trafficControl: 'reservation', capacity: 1 }],
       transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'dock', speedMps: 1.5, minClearanceM: 0 }],
       storageSystems: [{ id: 'rack', nodeId: 'storage', capacity: 1 }],
       conveyors: [{ id: 'pack-ship', entryNodeId: 'pack', exitNodeId: 'ship', lengthM: 6, speedMps: 1 }],
@@ -257,7 +257,7 @@ describe('ProcessFlowRuntime', () => {
         { id: 'dock', type: 'dock', x: 0, z: 0 },
         { id: 'rack', type: 'storage', x: 10, z: 0 }
       ],
-      paths: [{ id: 'dock-rack', from: 'dock', to: 'rack', lengthM: 10, speedLimitMps: 1, bidirectional: true, mode: 'path-guided' }],
+      paths: [{ id: 'dock-rack', from: 'dock', to: 'rack', lengthM: 10, speedLimitMps: 1, bidirectional: true, mode: 'path-guided', trafficControl: 'reservation', capacity: 1 }],
       transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'dock', speedMps: 1, minClearanceM: 0 }],
       storageSystems: [],
       conveyors: [],
@@ -295,6 +295,7 @@ describe('ProcessFlowRuntime', () => {
       totalEmptyDistanceM: 10,
       totalLoadedDistanceM: 20,
       totalDistanceM: 30,
+      totalTrafficWaitTimeSec: 0,
       totalEmptyTravelTimeSec: 10,
       totalLoadedTravelTimeSec: 20,
       totalTravelTimeSec: 30

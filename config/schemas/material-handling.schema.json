@@ -81,6 +81,19 @@
                 "type": "number",
                 "exclusiveMinimum": 0
               },
+              "trafficControl": {
+                "type": "string",
+                "enum": [
+                  "reservation",
+                  "none"
+                ],
+                "default": "reservation"
+              },
+              "capacity": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "default": 1
+              },
               "mode": {
                 "type": "string",
                 "enum": [
