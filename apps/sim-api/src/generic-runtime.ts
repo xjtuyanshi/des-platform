@@ -26,6 +26,17 @@ export type GenericStudyCatalogItem = {
   experimentIds: string[];
   defaultExperimentId: string | null;
   inlineModel: boolean;
+  processBlocks: Array<{
+    id: string;
+    kind: string;
+    label?: string;
+  }>;
+  processConnections: Array<{
+    from: string;
+    to: string;
+    probability?: number;
+    condition?: unknown;
+  }>;
 };
 
 export type GenericRuntimeSessionState = {
@@ -107,7 +118,18 @@ function toCatalogItem(bundle: GenericStudyBundle): GenericStudyCatalogItem {
     modelName: bundle.model.name,
     experimentIds: bundle.model.experiments.map((experiment) => experiment.id),
     defaultExperimentId: firstStudyExperimentId(bundle.study, bundle.model),
-    inlineModel: Boolean(bundle.study.model)
+    inlineModel: Boolean(bundle.study.model),
+    processBlocks: bundle.model.process.blocks.map((block) => ({
+      id: block.id,
+      kind: block.kind,
+      label: block.label
+    })),
+    processConnections: bundle.model.process.connections.map((connection) => ({
+      from: connection.from,
+      to: connection.to,
+      probability: connection.probability,
+      condition: connection.condition
+    }))
   };
 }
 
@@ -567,8 +589,11 @@ export function renderGenericRuntimeViewer(studyId: string): string {
       }
       .grid {
         display: grid;
-        grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.8fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 12px;
+      }
+      .events-panel {
+        margin-top: 12px;
       }
       .kpis {
         display: grid;
@@ -599,16 +624,38 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         border-radius: 8px;
         background: #101820;
       }
+      #logic {
+        background: #ffffff;
+      }
       .event-list {
         display: grid;
         gap: 6px;
-        max-height: 460px;
+        max-height: 260px;
         overflow: auto;
         font-size: 13px;
       }
       .event {
         border-bottom: 1px solid var(--line);
         padding-bottom: 6px;
+      }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        display: inline-block;
       }
       code { font-family: "SFMono-Regular", Consolas, monospace; }
       @media (max-width: 900px) {
@@ -639,14 +686,23 @@ export function renderGenericRuntimeViewer(studyId: string): string {
       </header>
       <div class="grid">
         <section>
-          <h2>Live Layout</h2>
+          <h2>Live Material Layout</h2>
           <svg id="layout" viewBox="0 0 960 520" role="img" aria-label="Live DES layout"></svg>
         </section>
         <section>
-          <h2>Recent Runtime Events</h2>
-          <div id="events" class="event-list"></div>
+          <h2>Process Logic</h2>
+          <svg id="logic" viewBox="0 0 960 520" role="img" aria-label="Process logic diagram"></svg>
+          <div class="legend">
+            <span><i class="swatch" style="background:#2d6cdf"></i>active block</span>
+            <span><i class="swatch" style="background:#d77a2d"></i>material move</span>
+            <span><i class="swatch" style="background:#2f7d62"></i>resource/service</span>
+          </div>
         </section>
       </div>
+      <section class="events-panel">
+        <h2>Recent Runtime Events</h2>
+        <div id="events" class="event-list"></div>
+      </section>
     </main>
     <script>
       const studyId = ${encodedStudyId};
@@ -806,6 +862,192 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         return { point: nodesById.get(transport.loadedToNodeId), loaded: true };
       }
 
+      function svgEl(name, attrs = {}) {
+        const element = document.createElementNS('http://www.w3.org/2000/svg', name);
+        for (const [key, value] of Object.entries(attrs)) {
+          element.setAttribute(key, String(value));
+        }
+        return element;
+      }
+
+      function blockTone(kind) {
+        if (kind === 'moveByTransporter' || kind === 'convey') return '#fff4e8';
+        if (kind === 'service' || kind === 'seize' || kind === 'release') return '#eaf7f0';
+        if (kind === 'source') return '#eef4ff';
+        if (kind === 'sink') return '#f1f5f9';
+        return '#ffffff';
+      }
+
+      function computeLogicLayout(blocks, connections) {
+        const blockIds = new Set(blocks.map((block) => block.id));
+        const incoming = new Map(blocks.map((block) => [block.id, []]));
+        for (const connection of connections) {
+          if (incoming.has(connection.to)) incoming.get(connection.to).push(connection.from);
+        }
+        const levels = new Map();
+        blocks.forEach((block, index) => {
+          if (block.kind === 'source' || (incoming.get(block.id)?.length ?? 0) === 0) {
+            levels.set(block.id, 0);
+          } else if (!blockIds.has(block.id)) {
+            levels.set(block.id, index);
+          }
+        });
+        for (let pass = 0; pass < blocks.length + connections.length; pass += 1) {
+          for (const connection of connections) {
+            if (!levels.has(connection.from)) continue;
+            const next = (levels.get(connection.from) ?? 0) + 1;
+            levels.set(connection.to, Math.max(levels.get(connection.to) ?? 0, next));
+          }
+        }
+        blocks.forEach((block, index) => {
+          if (!levels.has(block.id)) levels.set(block.id, index);
+        });
+
+        const groups = new Map();
+        for (const block of blocks) {
+          const level = levels.get(block.id) ?? 0;
+          groups.set(level, [...(groups.get(level) ?? []), block]);
+        }
+        const maxLevel = Math.max(...Array.from(groups.keys()), 0);
+        const positions = new Map();
+        for (const [level, group] of groups.entries()) {
+          const x = 48 + level * (820 / Math.max(1, maxLevel));
+          group.forEach((block, index) => {
+            const y = 46 + (index + 1) * (404 / (group.length + 1));
+            positions.set(block.id, { x, y, width: 146, height: 66 });
+          });
+        }
+        return positions;
+      }
+
+      function activeBlockIds() {
+        const ids = new Set();
+        for (const entity of snapshot?.entities ?? []) {
+          if (entity.completedAtSec === null && entity.currentBlockId) ids.add(entity.currentBlockId);
+        }
+        for (const transport of snapshot?.activeTransports ?? []) {
+          ids.add(transport.blockId);
+        }
+        const latestEnter = [...recentEvents].reverse().find((event) => event.type === 'process.entity.enter');
+        if (latestEnter?.payload?.blockId) ids.add(String(latestEnter.payload.blockId));
+        return ids;
+      }
+
+      function connectionLabel(connection) {
+        if (typeof connection.probability === 'number') {
+          return Math.round(connection.probability * 100) + '%';
+        }
+        if (connection.condition) {
+          return 'condition';
+        }
+        return '';
+      }
+
+      function renderLogic() {
+        const svg = $('logic');
+        svg.innerHTML = '';
+        const blocks = study?.processBlocks ?? [];
+        const connections = study?.processConnections ?? [];
+        if (blocks.length === 0) {
+          const text = svgEl('text', { x: 36, y: 58, fill: '#64748b' });
+          text.textContent = 'No process logic loaded yet.';
+          svg.appendChild(text);
+          return;
+        }
+
+        const positions = computeLogicLayout(blocks, connections);
+        const active = activeBlockIds();
+        const defs = svgEl('defs');
+        const marker = svgEl('marker', {
+          id: 'arrow',
+          markerWidth: 10,
+          markerHeight: 10,
+          refX: 8,
+          refY: 3,
+          orient: 'auto',
+          markerUnits: 'strokeWidth'
+        });
+        marker.appendChild(svgEl('path', { d: 'M0,0 L0,6 L9,3 z', fill: '#8aa0b8' }));
+        defs.appendChild(marker);
+        svg.appendChild(defs);
+
+        for (const connection of connections) {
+          const from = positions.get(connection.from);
+          const to = positions.get(connection.to);
+          if (!from || !to) continue;
+          const startX = from.x + from.width;
+          const startY = from.y + from.height / 2;
+          const endX = to.x;
+          const endY = to.y + to.height / 2;
+          const mid = Math.max(24, (endX - startX) / 2);
+          const pathEl = svgEl('path', {
+            d: 'M' + startX + ',' + startY + ' C' + (startX + mid) + ',' + startY + ' ' + (endX - mid) + ',' + endY + ' ' + endX + ',' + endY,
+            fill: 'none',
+            stroke: '#8aa0b8',
+            'stroke-width': 2,
+            'marker-end': 'url(#arrow)'
+          });
+          svg.appendChild(pathEl);
+          const label = connectionLabel(connection);
+          if (label) {
+            const text = svgEl('text', {
+              x: (startX + endX) / 2,
+              y: (startY + endY) / 2 - 8,
+              fill: '#64748b',
+              'font-size': 11,
+              'text-anchor': 'middle'
+            });
+            text.textContent = label;
+            svg.appendChild(text);
+          }
+        }
+
+        for (const block of blocks) {
+          const pos = positions.get(block.id);
+          const stats = snapshot?.blockStats?.[block.id];
+          const isActive = active.has(block.id);
+          const rect = svgEl('rect', {
+            x: pos.x,
+            y: pos.y,
+            width: pos.width,
+            height: pos.height,
+            rx: 8,
+            fill: isActive ? '#e7f0ff' : blockTone(block.kind),
+            stroke: isActive ? '#2d6cdf' : '#ccd6e2',
+            'stroke-width': isActive ? 3 : 1.4
+          });
+          svg.appendChild(rect);
+
+          const title = svgEl('text', {
+            x: pos.x + 12,
+            y: pos.y + 22,
+            fill: '#17212b',
+            'font-size': 13,
+            'font-weight': 700
+          });
+          title.textContent = block.label || block.id;
+          svg.appendChild(title);
+
+          const kind = svgEl('text', {
+            x: pos.x + 12,
+            y: pos.y + 40,
+            fill: block.kind === 'moveByTransporter' ? '#b45f18' : '#64748b',
+            'font-size': 11
+          });
+          kind.textContent = block.kind;
+          svg.appendChild(kind);
+
+          const stat = svgEl('text', {
+            x: pos.x + 12,
+            y: pos.y + 57,
+            fill: '#64748b',
+            'font-size': 11
+          });
+          stat.textContent = stats ? 'in ' + stats.entered + ' / done ' + stats.completed + ' / q ' + stats.maxQueueLength : 'not entered';
+          svg.appendChild(stat);
+        }
+      }
+
       function renderLayout() {
         const svg = $('layout');
         svg.innerHTML = '';
@@ -917,6 +1159,7 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         $('created').textContent = snapshot?.createdEntities ?? 0;
         $('completed').textContent = snapshot?.completedEntities ?? 0;
         renderLayout();
+        renderLogic();
         renderEvents();
       }
 
