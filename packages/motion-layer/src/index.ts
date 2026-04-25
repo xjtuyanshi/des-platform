@@ -932,7 +932,7 @@ export function verifyMaterialHandlingMotion(input: {
     const fleetSpeed = fleet?.speedMps ?? 1;
     const phase = transport ? materialTransportPhase(transport, input.nowSec) : 'idle';
     const routeNodeIds = transport
-      ? (phase === 'moving' && input.nowSec < transport.emptyTravelEndSec ? transport.emptyRouteNodeIds : transport.loadedRouteNodeIds)
+      ? (input.nowSec < transport.emptyTravelEndSec ? transport.emptyRouteNodeIds : transport.loadedRouteNodeIds)
       : [unit.currentNodeId];
     const point = transport
       ? materialTransportPoint(transport, input.nowSec, nodesById) ?? nodesById.get(unit.currentNodeId) ?? { x: 0, z: 0 }

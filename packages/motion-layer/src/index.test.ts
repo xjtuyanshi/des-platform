@@ -144,4 +144,67 @@ describe('MotionWorld', () => {
     expect(verification.warnings.some((warning) => warning.code === 'motion.static-obstacle-route')).toBe(true);
     expect(verification.warnings.some((warning) => warning.code === 'motion.dynamic-separation')).toBe(true);
   });
+
+  it('checks the reserved empty route while a transporter is waiting to enter traffic', () => {
+    const model = AiNativeDesModelDefinitionSchema.parse({
+      schemaVersion: 'des-platform.v1' as const,
+      id: 'waiting-route-verify',
+      name: 'Waiting Route Verify',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source' as const, scheduleAtSec: [0] },
+          { id: 'sink', kind: 'sink' as const }
+        ],
+        connections: [{ from: 'source', to: 'sink' }]
+      },
+      materialHandling: {
+        id: 'mh',
+        nodes: [
+          { id: 'dock', type: 'dock' as const, x: 0, z: 0 },
+          { id: 'rack', type: 'storage' as const, x: 10, z: 0 },
+          { id: 'pack', type: 'station' as const, x: 10, z: 6 }
+        ],
+        paths: [
+          { id: 'dock-rack', from: 'dock', to: 'rack', lengthM: 10 },
+          { id: 'rack-pack', from: 'rack', to: 'pack', lengthM: 6 }
+        ],
+        transporterFleets: [{ id: 'amr', count: 1, homeNodeId: 'dock', speedMps: 1, lengthM: 1, widthM: 1 }],
+        obstacles: [{ id: 'column', x: 5, z: 0, widthM: 1, depthM: 1, heightM: 3 }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 20 }]
+    });
+    const materialHandling = model.materialHandling!;
+
+    const verification = verifyMaterialHandlingMotion({
+      model,
+      snapshot: {
+        nodes: materialHandling.nodes,
+        transporterUnits: [{ id: 'amr-1', fleetId: 'amr', status: 'busy', currentNodeId: 'dock', assignedEntityId: 'source-1' }],
+        obstacles: materialHandling.obstacles
+      },
+      activeTransports: [{
+        transporterUnitId: 'amr-1',
+        fleetId: 'amr',
+        entityId: 'source-1',
+        blockId: 'move',
+        endSec: 20,
+        emptyRouteNodeIds: ['dock', 'rack'],
+        emptyTravelStartSec: 5,
+        emptyTravelEndSec: 15,
+        loadStartSec: 15,
+        loadEndSec: 15,
+        loadedRouteNodeIds: ['rack', 'pack'],
+        loadedTravelStartSec: 15,
+        loadedTravelEndSec: 20,
+        unloadStartSec: 20,
+        unloadEndSec: 20,
+        loadedToNodeId: 'pack'
+      }],
+      nowSec: 1
+    });
+
+    expect(verification.units[0]?.status).toBe('waiting');
+    expect(verification.warnings.some((warning) => warning.code === 'motion.static-obstacle-route')).toBe(true);
+  });
 });

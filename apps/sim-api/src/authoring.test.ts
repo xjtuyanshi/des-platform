@@ -14,6 +14,8 @@ describe('DES authoring API helpers', () => {
     expect(result.study?.model?.materialHandling?.transporterFleets[0]?.count).toBe(3);
     expect(result.study?.model?.parameters.find((parameter) => parameter.id === 'arrival-mean-sec')?.defaultValue).toBe(60);
     expect(result.study?.model?.parameters.find((parameter) => parameter.id === 'amr-count')?.defaultValue).toBe(3);
+    expect(result.study?.model?.materialHandling?.nodes.some((node) => node.id === 'bypass-a')).toBe(true);
+    expect(result.study?.model?.materialHandling?.paths.some((path) => path.id === 'dock-work')).toBe(false);
   });
 
   it('parses high-load fleet and worker counts from natural language', async () => {

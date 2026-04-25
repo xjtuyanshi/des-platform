@@ -2003,6 +2003,9 @@ export function renderGenericRuntimeViewer(studyId: string): string {
       }
 
       function transportPosition(transport, nowSec, nodesById) {
+        if (nowSec < transport.emptyTravelStartSec) {
+          return { point: nodesById.get(transport.emptyFromNodeId), loaded: false, waiting: true };
+        }
         if (nowSec < transport.emptyTravelEndSec && transport.emptyTravelEndSec > transport.emptyTravelStartSec) {
           return {
             point: interpolateRoute(
@@ -2010,11 +2013,15 @@ export function renderGenericRuntimeViewer(studyId: string): string {
               (nowSec - transport.emptyTravelStartSec) / (transport.emptyTravelEndSec - transport.emptyTravelStartSec),
               nodesById
             ),
-            loaded: false
+            loaded: false,
+            waiting: false
           };
         }
+        if (nowSec < transport.loadEndSec) {
+          return { point: nodesById.get(transport.loadedFromNodeId), loaded: false, waiting: false };
+        }
         if (nowSec < transport.loadedTravelStartSec) {
-          return { point: nodesById.get(transport.loadedFromNodeId), loaded: false };
+          return { point: nodesById.get(transport.loadedFromNodeId), loaded: true, waiting: true };
         }
         if (nowSec < transport.loadedTravelEndSec && transport.loadedTravelEndSec > transport.loadedTravelStartSec) {
           return {
@@ -2023,10 +2030,11 @@ export function renderGenericRuntimeViewer(studyId: string): string {
               (nowSec - transport.loadedTravelStartSec) / (transport.loadedTravelEndSec - transport.loadedTravelStartSec),
               nodesById
             ),
-            loaded: true
+            loaded: true,
+            waiting: false
           };
         }
-        return { point: nodesById.get(transport.loadedToNodeId), loaded: true };
+        return { point: nodesById.get(transport.loadedToNodeId), loaded: true, waiting: false };
       }
 
       function svgEl(name, attrs = {}) {
@@ -2111,8 +2119,10 @@ export function renderGenericRuntimeViewer(studyId: string): string {
       }
 
       function transportPhase(transport, nowSec) {
+        if (nowSec < transport.emptyTravelStartSec) return 'waiting for empty route';
         if (nowSec < transport.emptyTravelEndSec) return 'empty travel';
         if (nowSec < transport.loadEndSec) return 'load';
+        if (nowSec < transport.loadedTravelStartSec) return 'waiting for loaded route';
         if (nowSec < transport.loadedTravelEndSec) return 'loaded travel';
         if (nowSec < transport.unloadEndSec) return 'unload';
         return 'done';
@@ -2473,11 +2483,11 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         for (const transport of snapshot.activeTransports ?? []) {
           const state = transportPosition(transport, snapshot.nowSec, nodesById);
           if (!state?.point) continue;
-          drawVehicle(svg, s.x(state.point.x), s.y(state.point.z), transport.transporterUnitId, state.loaded, transport.entityId);
+          drawVehicle(svg, s.x(state.point.x), s.y(state.point.z), transport.transporterUnitId, state.loaded, transport.entityId, state.waiting);
         }
       }
 
-      function drawVehicle(svg, x, y, id, loaded, entityId = '') {
+      function drawVehicle(svg, x, y, id, loaded, entityId = '', waiting = false) {
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         rect.setAttribute('x', x - 13);
@@ -2485,14 +2495,14 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         rect.setAttribute('width', 26);
         rect.setAttribute('height', 18);
         rect.setAttribute('rx', 4);
-        rect.setAttribute('fill', loaded ? 'var(--load)' : 'var(--move)');
+        rect.setAttribute('fill', waiting ? '#8a98a8' : loaded ? 'var(--load)' : 'var(--move)');
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         text.setAttribute('x', x);
         text.setAttribute('y', y + 50);
         text.setAttribute('text-anchor', 'middle');
         text.setAttribute('fill', '#ffffff');
         text.setAttribute('font-size', '12');
-        text.textContent = entityId ? id + ' / ' + entityId : id;
+        text.textContent = entityId ? id + ' / ' + entityId + (waiting ? ' wait' : '') : id;
         group.appendChild(rect);
         group.appendChild(text);
         svg.appendChild(group);

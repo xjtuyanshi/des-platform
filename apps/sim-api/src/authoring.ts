@@ -409,6 +409,8 @@ function buildRuleBasedStudy(brief: string, constraints: Record<string, unknown>
       nodes: [
         { id: 'home', type: 'home', x: -5, z: 0 },
         { id: 'dock', type: 'dock', x: 0, z: 0 },
+        { id: 'bypass-a', type: 'point', x: 4, z: -3 },
+        { id: 'bypass-b', type: 'point', x: 8, z: -3 },
         { id: 'work', type: isManufacturing ? 'station' : 'storage', x: 12, z: 0 },
         { id: 'finish', type: 'station', x: 12, z: 8 },
         { id: 'parking', type: 'parking', x: -5, z: 4 },
@@ -416,7 +418,9 @@ function buildRuleBasedStudy(brief: string, constraints: Record<string, unknown>
       ],
       paths: [
         { id: 'home-dock', from: 'home', to: 'dock', bidirectional: true, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
-        { id: 'dock-work', from: 'dock', to: 'work', bidirectional: true, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
+        { id: 'dock-bypass-a', from: 'dock', to: 'bypass-a', bidirectional: true, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
+        { id: 'bypass-a-bypass-b', from: 'bypass-a', to: 'bypass-b', bidirectional: true, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
+        { id: 'bypass-b-work', from: 'bypass-b', to: 'work', bidirectional: true, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
         { id: 'work-finish', from: 'work', to: 'finish', bidirectional: true, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
         { id: 'home-parking', from: 'home', to: 'parking', bidirectional: true, trafficControl: 'none', capacity: Math.max(2, amrCount), mode: 'path-guided' }
       ],
@@ -424,7 +428,7 @@ function buildRuleBasedStudy(brief: string, constraints: Record<string, unknown>
       storageSystems: [],
       conveyors: [],
       zones: [],
-      obstacles: [{ id: 'column-1', x: 6, z: 4, widthM: 0.8, depthM: 0.8, heightM: 4 }]
+      obstacles: [{ id: 'column-1', x: 6, z: 0, widthM: 1.2, depthM: 1.2, heightM: 4 }]
     },
     experiments: [{ id: 'baseline', name: 'Baseline', seed: 20260425, replications: 1, seedStride: 1, parameterOverrides: {}, sweep: {}, stopTimeSec, warmupSec: 0, maxEvents: 100000 }],
     metadata: { source: 'rule-based-authoring', brief }
