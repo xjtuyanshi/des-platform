@@ -1050,6 +1050,7 @@ export function renderGenericWorkbench(): string {
         border-radius: 8px;
         padding: 14px;
         margin-bottom: 12px;
+        overflow: auto;
       }
       h1, h2, p { margin: 0; }
       h1 { font-size: 22px; line-height: 1.15; }
@@ -1471,6 +1472,7 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         border-radius: 8px;
         padding: 14px;
         margin-bottom: 12px;
+        overflow: auto;
       }
       h1, h2, p { margin: 0; }
       h1 { font-size: 22px; line-height: 1.15; }
@@ -1621,6 +1623,7 @@ export function renderGenericRuntimeViewer(studyId: string): string {
       }
       #logic {
         background: #ffffff;
+        max-width: none;
       }
       .event-list {
         display: grid;
@@ -2083,13 +2086,13 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           const level = levels.get(block.id) ?? 0;
           groups.set(level, [...(groups.get(level) ?? []), block]);
         }
-        const maxLevel = Math.max(...Array.from(groups.keys()), 0);
+        const levelGap = 188;
         const positions = new Map();
         for (const [level, group] of groups.entries()) {
-          const x = 48 + level * (820 / Math.max(1, maxLevel));
+          const x = 48 + level * levelGap;
           group.forEach((block, index) => {
             const y = 46 + (index + 1) * (404 / (group.length + 1));
-            positions.set(block.id, { x, y, width: 146, height: 66 });
+            positions.set(block.id, { x, y, width: 154, height: 66 });
           });
         }
         return positions;
@@ -2323,6 +2326,9 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         }
 
         const positions = computeLogicLayout(blocks, connections);
+        const canvasWidth = Math.max(960, ...Array.from(positions.values()).map((position) => position.x + position.width + 48));
+        svg.setAttribute('viewBox', '0 0 ' + canvasWidth + ' 520');
+        svg.style.width = canvasWidth + 'px';
         const active = activeBlockIds();
         const defs = svgEl('defs');
         const marker = svgEl('marker', {
@@ -2426,6 +2432,24 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         }
         const s = scaleFor(nodes);
         const nodesById = nodeMap(material);
+        const vehicleSlots = new Map();
+        const vehicleOffsets = [
+          [0, 0],
+          [30, 0],
+          [-30, 0],
+          [0, 30],
+          [0, -30],
+          [30, 30],
+          [-30, -30]
+        ];
+
+        function offsetVehiclePoint(x, y) {
+          const key = Math.round(x) + '|' + Math.round(y);
+          const index = vehicleSlots.get(key) ?? 0;
+          vehicleSlots.set(key, index + 1);
+          const offset = vehicleOffsets[index % vehicleOffsets.length];
+          return { x: x + offset[0], y: y + offset[1] };
+        }
 
         for (const path of material.paths ?? []) {
           const from = nodesById.get(path.from);
@@ -2477,13 +2501,15 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           if (activeUnitIds.has(unit.id)) continue;
           const node = nodesById.get(unit.currentNodeId);
           if (!node) continue;
-          drawVehicle(svg, s.x(node.x), s.y(node.z), unit.id, false);
+          const point = offsetVehiclePoint(s.x(node.x), s.y(node.z));
+          drawVehicle(svg, point.x, point.y, unit.id, false);
         }
 
         for (const transport of snapshot.activeTransports ?? []) {
           const state = transportPosition(transport, snapshot.nowSec, nodesById);
           if (!state?.point) continue;
-          drawVehicle(svg, s.x(state.point.x), s.y(state.point.z), transport.transporterUnitId, state.loaded, transport.entityId, state.waiting);
+          const point = offsetVehiclePoint(s.x(state.point.x), s.y(state.point.z));
+          drawVehicle(svg, point.x, point.y, transport.transporterUnitId, state.loaded, transport.entityId, state.waiting);
         }
       }
 

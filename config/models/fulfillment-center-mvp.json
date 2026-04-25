@@ -201,6 +201,18 @@
         "z": 0
       },
       {
+        "id": "outbound-1",
+        "type": "point",
+        "x": 7,
+        "z": -3
+      },
+      {
+        "id": "outbound-2",
+        "type": "point",
+        "x": 14,
+        "z": -3
+      },
+      {
         "id": "rack",
         "type": "storage",
         "x": 18,
@@ -213,20 +225,80 @@
         "z": 8
       },
       {
+        "id": "return-1",
+        "type": "point",
+        "x": 10,
+        "z": 12
+      },
+      {
+        "id": "return-2",
+        "type": "point",
+        "x": 2,
+        "z": 12
+      },
+      {
         "id": "ship",
         "type": "dock",
         "x": 30,
         "z": 8
+      },
+      {
+        "id": "parking",
+        "type": "parking",
+        "x": -4,
+        "z": -4
+      },
+      {
+        "id": "charger",
+        "type": "charger",
+        "x": -4,
+        "z": 4
       }
     ],
     "paths": [
       {
-        "id": "dock-rack",
+        "id": "parking-dock",
+        "from": "parking",
+        "to": "dock",
+        "lengthM": 6,
+        "speedLimitMps": 1.2,
+        "bidirectional": true,
+        "trafficControl": "none",
+        "capacity": 2,
+        "mode": "path-guided"
+      },
+      {
+        "id": "dock-outbound-1",
         "from": "dock",
-        "to": "rack",
-        "lengthM": 18,
+        "to": "outbound-1",
+        "lengthM": 8,
         "speedLimitMps": 1.8,
-        "bidirectional": true
+        "bidirectional": false,
+        "trafficControl": "reservation",
+        "capacity": 1,
+        "mode": "path-guided"
+      },
+      {
+        "id": "outbound-1-outbound-2",
+        "from": "outbound-1",
+        "to": "outbound-2",
+        "lengthM": 7,
+        "speedLimitMps": 1.8,
+        "bidirectional": false,
+        "trafficControl": "reservation",
+        "capacity": 1,
+        "mode": "path-guided"
+      },
+      {
+        "id": "outbound-2-rack",
+        "from": "outbound-2",
+        "to": "rack",
+        "lengthM": 5,
+        "speedLimitMps": 1.8,
+        "bidirectional": false,
+        "trafficControl": "reservation",
+        "capacity": 1,
+        "mode": "path-guided"
       },
       {
         "id": "rack-pack",
@@ -234,7 +306,43 @@
         "to": "pack",
         "lengthM": 8,
         "speedLimitMps": 1.4,
-        "bidirectional": true
+        "bidirectional": false,
+        "trafficControl": "reservation",
+        "capacity": 1,
+        "mode": "path-guided"
+      },
+      {
+        "id": "pack-return-1",
+        "from": "pack",
+        "to": "return-1",
+        "lengthM": 9,
+        "speedLimitMps": 1.8,
+        "bidirectional": false,
+        "trafficControl": "reservation",
+        "capacity": 1,
+        "mode": "path-guided"
+      },
+      {
+        "id": "return-1-return-2",
+        "from": "return-1",
+        "to": "return-2",
+        "lengthM": 8,
+        "speedLimitMps": 1.8,
+        "bidirectional": false,
+        "trafficControl": "reservation",
+        "capacity": 1,
+        "mode": "path-guided"
+      },
+      {
+        "id": "return-2-dock",
+        "from": "return-2",
+        "to": "dock",
+        "lengthM": 13,
+        "speedLimitMps": 1.8,
+        "bidirectional": false,
+        "trafficControl": "reservation",
+        "capacity": 1,
+        "mode": "path-guided"
       }
     ],
     "transporterFleets": [
@@ -244,6 +352,9 @@
         "navigation": "path-guided",
         "count": 2,
         "homeNodeId": "dock",
+        "parkingNodeId": "parking",
+        "chargerNodeId": "charger",
+        "idlePolicy": "stay",
         "speedMps": 1.5,
         "accelerationMps2": 0.8,
         "decelerationMps2": 0.8,
@@ -274,10 +385,10 @@
         "id": "amr-aisle",
         "kind": "traffic-control",
         "polygon": [
-          { "x": -2, "z": -2 },
-          { "x": 20, "z": -2 },
-          { "x": 20, "z": 10 },
-          { "x": -2, "z": 10 }
+          { "x": -6, "z": -6 },
+          { "x": 22, "z": -6 },
+          { "x": 22, "z": 14 },
+          { "x": -6, "z": 14 }
         ]
       }
     ],
