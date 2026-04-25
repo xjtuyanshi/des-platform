@@ -138,7 +138,7 @@ The one-file study runner is the current end-to-end MVP path:
 pnpm run:study config/studies/fulfillment-center-mvp.study.json
 ```
 
-It writes validation diagnostics, a baseline run, a replication experiment, a throughput sweep, HTML reports, and a manifest under `output/studies/fulfillment-center-mvp/`. The manifest at [manifest.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/output/studies/fulfillment-center-mvp/manifest.json) is the index for the full simulation package.
+It writes validation diagnostics, a baseline run, a replication experiment, a throughput sweep, HTML reports, a browser index, and a manifest under `output/studies/fulfillment-center-mvp/`. Open [index.html](/Users/luke/codex%20projects/DES%20Sim/des-platform/output/studies/fulfillment-center-mvp/index.html) first; [manifest.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/output/studies/fulfillment-center-mvp/manifest.json) is the machine-readable index for the full simulation package.
 
 The current generic MVP scenario is [fulfillment-center-mvp.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/models/fulfillment-center-mvp.json). It combines probabilistic order classes, assignment logic, AMR moves, storage, packing resources, conveyor travel, replications, parameter sweeps, and an HTML report.
 
@@ -150,7 +150,7 @@ For a fully self-contained case, [micro-fulfillment-inline.study.json](/Users/lu
 pnpm run:case config/studies/micro-fulfillment-inline.study.json
 ```
 
-Inline study runs write a normalized model snapshot to `output/studies/<study-id>/model.json`, so generated results remain auditable even when the original input was a single case file.
+Inline study runs write a normalized model snapshot to `output/studies/<study-id>/model.json` and a package index to `output/studies/<study-id>/index.html`, so generated results remain auditable and easy to inspect even when the original input was a single case file.
 
 The AI-native library catalog is [des-library-catalog.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/catalog/des-library-catalog.json). It documents the available Process Flow blocks, Material Handling primitives, experiment controls, parameters, constraints, and examples in a structure an agent can use directly.
 

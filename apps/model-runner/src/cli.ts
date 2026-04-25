@@ -22,7 +22,15 @@ const rootDir = path.resolve(currentDir, '../../..');
 const defaultModelPath = path.join(rootDir, 'config/models/single-server-process.json');
 const defaultStudyPath = path.join(rootDir, 'config/studies/fulfillment-center-mvp.study.json');
 
-type StudyArtifactKind = 'model' | 'diagnostics' | 'run' | 'experiment' | 'sweep' | 'html-report' | 'manifest';
+type StudyArtifactKind =
+  | 'model'
+  | 'diagnostics'
+  | 'run'
+  | 'experiment'
+  | 'sweep'
+  | 'html-report'
+  | 'study-report'
+  | 'manifest';
 
 type StudyArtifact = {
   kind: StudyArtifactKind;
@@ -197,11 +205,14 @@ async function runStudy(positionalArgs: string[]): Promise<void> {
     artifacts.push({ kind: 'diagnostics', path: diagnosticsPath });
 
     if (!diagnostics.valid && study.failOnValidationError) {
-      const manifestPath = path.join(outputDir, 'manifest.json');
-      artifacts.push({ kind: 'manifest', path: manifestPath });
-      const manifest = buildStudyManifest(study, preparedModel.modelPath, outputDir, diagnostics, artifacts);
-      await writeJsonFile(manifestPath, manifest);
-      printStudySummary(study, manifest, manifestPath);
+      const { manifest, manifestPath, indexPath } = await writeStudyPackageIndex(
+        study,
+        preparedModel.modelPath,
+        outputDir,
+        diagnostics,
+        artifacts
+      );
+      printStudySummary(study, manifest, manifestPath, indexPath);
       process.exitCode = 1;
       return;
     }
@@ -227,11 +238,14 @@ async function runStudy(positionalArgs: string[]): Promise<void> {
     await writeStudyResult(outputPath, result, operation, 'sweep', artifacts);
   }
 
-  const manifestPath = path.join(outputDir, 'manifest.json');
-  artifacts.push({ kind: 'manifest', path: manifestPath });
-  const manifest = buildStudyManifest(study, preparedModel.modelPath, outputDir, diagnostics, artifacts);
-  await writeJsonFile(manifestPath, manifest);
-  printStudySummary(study, manifest, manifestPath);
+  const { manifest, manifestPath, indexPath } = await writeStudyPackageIndex(
+    study,
+    preparedModel.modelPath,
+    outputDir,
+    diagnostics,
+    artifacts
+  );
+  printStudySummary(study, manifest, manifestPath, indexPath);
 }
 
 async function loadAndAnalyzeModel(modelPath: string): Promise<ModelDiagnosticsReport> {
@@ -306,6 +320,25 @@ async function writeJsonFile(outputPath: string, value: unknown): Promise<void> 
   await writeFile(outputPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+async function writeStudyPackageIndex(
+  study: SimulationStudyCaseDefinition,
+  modelPath: string,
+  outputDir: string,
+  diagnostics: ModelDiagnosticsReport | null,
+  artifacts: StudyArtifact[]
+): Promise<{ manifest: StudyManifest; manifestPath: string; indexPath: string }> {
+  const indexPath = path.join(outputDir, 'index.html');
+  const manifestPath = path.join(outputDir, 'manifest.json');
+  artifacts.push({ kind: 'study-report', path: indexPath });
+  artifacts.push({ kind: 'manifest', path: manifestPath });
+  const manifest = buildStudyManifest(study, modelPath, outputDir, diagnostics, artifacts);
+
+  await writeJsonFile(manifestPath, manifest);
+  await writeFile(indexPath, renderStudyIndex(study, manifest), 'utf8');
+
+  return { manifest, manifestPath, indexPath };
+}
+
 function buildStudyManifest(
   study: SimulationStudyCaseDefinition,
   modelPath: string,
@@ -338,7 +371,179 @@ function safeFileName(value: string): string {
   return value.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'artifact';
 }
 
-function printStudySummary(study: SimulationStudyCaseDefinition, manifest: StudyManifest, manifestPath: string): void {
+function renderStudyIndex(study: SimulationStudyCaseDefinition, manifest: StudyManifest): string {
+  const artifactRows = manifest.artifacts
+    .map((artifact) => {
+      const href = htmlArtifactHref(manifest.outputDir, artifact.path);
+      return `
+        <tr>
+          <td>${escapeHtml(artifact.kind)}</td>
+          <td>${escapeHtml(artifact.experimentId ?? '')}</td>
+          <td><a href="${href}">${escapeHtml(path.basename(artifact.path))}</a></td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const statusText = manifest.valid ? 'Valid' : 'Invalid';
+  const statusClass = manifest.valid ? 'ok' : 'bad';
+  const description = study.description ? `<p>${escapeHtml(study.description)}</p>` : '';
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(study.name)} Package</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f8fb;
+        --panel: #ffffff;
+        --line: #d9e1ea;
+        --ink: #18212c;
+        --muted: #64748b;
+        --ok: #237a55;
+        --bad: #b42318;
+        --accent: #2d6cdf;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, "Avenir Next", "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 28px;
+      }
+      header, section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+        margin-bottom: 18px;
+      }
+      h1, h2, p { margin: 0; }
+      h1 { font-size: 28px; line-height: 1.15; }
+      h2 { font-size: 16px; margin-bottom: 12px; }
+      p { color: var(--muted); margin-top: 8px; }
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 16px;
+      }
+      .kpis div {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 12px;
+        min-height: 74px;
+      }
+      .kpis span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      .kpis strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 18px;
+      }
+      .ok { color: var(--ok); }
+      .bad { color: var(--bad); }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th, td {
+        border-bottom: 1px solid var(--line);
+        padding: 10px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover { text-decoration: underline; }
+      code {
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 13px;
+      }
+      @media (max-width: 760px) {
+        main { padding: 16px; }
+        .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>${escapeHtml(study.name)}</h1>
+        ${description}
+        <div class="kpis">
+          <div><span>Status</span><strong class="${statusClass}">${statusText}</strong></div>
+          <div><span>Errors</span><strong>${manifest.errors}</strong></div>
+          <div><span>Warnings</span><strong>${manifest.warnings}</strong></div>
+          <div><span>Artifacts</span><strong>${manifest.artifacts.length}</strong></div>
+        </div>
+      </header>
+      <section>
+        <h2>Package</h2>
+        <table>
+          <tbody>
+            <tr><th>Study ID</th><td><code>${escapeHtml(manifest.studyId)}</code></td></tr>
+            <tr><th>Model</th><td><code>${escapeHtml(manifest.modelPath)}</code></td></tr>
+            <tr><th>Output</th><td><code>${escapeHtml(manifest.outputDir)}</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Artifacts</h2>
+        <table>
+          <thead>
+            <tr><th>Kind</th><th>Experiment</th><th>File</th></tr>
+          </thead>
+          <tbody>
+            ${artifactRows}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>
+`;
+}
+
+function htmlArtifactHref(outputDir: string, artifactPath: string): string {
+  const relativePath = path.relative(outputDir, artifactPath).split(path.sep).join('/');
+  return encodeURI(relativePath || path.basename(artifactPath));
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function printStudySummary(
+  study: SimulationStudyCaseDefinition,
+  manifest: StudyManifest,
+  manifestPath: string,
+  indexPath: string
+): void {
   console.log(`study=${study.id}`);
   console.log(`name=${study.name}`);
   console.log(`valid=${manifest.valid}`);
@@ -346,6 +551,7 @@ function printStudySummary(study: SimulationStudyCaseDefinition, manifest: Study
   console.log(`warnings=${manifest.warnings}`);
   console.log(`artifacts=${manifest.artifacts.length}`);
   console.log(`outputDir=${manifest.outputDir}`);
+  console.log(`index=${indexPath}`);
   console.log(`manifest=${manifestPath}`);
 }
 
