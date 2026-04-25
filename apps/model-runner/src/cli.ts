@@ -12,6 +12,7 @@ import {
   type ModelDiagnostic,
   type ModelDiagnosticsReport
 } from '@des-platform/model-compiler';
+import type { AiNativeDesModelDefinition } from '@des-platform/shared-schema/model-dsl';
 import type { StudyOperationDefinition, SimulationStudyCaseDefinition } from '@des-platform/shared-schema/study';
 import { loadAiNativeDesModel, loadSimulationStudyCase, loadUnknownDefinition } from '@des-platform/shared-schema/loader';
 import { renderGenericDesReport, type GenericDesReportInput } from 'reporting/generic';
@@ -21,7 +22,7 @@ const rootDir = path.resolve(currentDir, '../../..');
 const defaultModelPath = path.join(rootDir, 'config/models/single-server-process.json');
 const defaultStudyPath = path.join(rootDir, 'config/studies/fulfillment-center-mvp.study.json');
 
-type StudyArtifactKind = 'diagnostics' | 'run' | 'experiment' | 'sweep' | 'html-report' | 'manifest';
+type StudyArtifactKind = 'model' | 'diagnostics' | 'run' | 'experiment' | 'sweep' | 'html-report' | 'manifest';
 
 type StudyArtifact = {
   kind: StudyArtifactKind;
@@ -39,6 +40,11 @@ type StudyManifest = {
   errors: number;
   warnings: number;
   artifacts: StudyArtifact[];
+};
+
+type PreparedStudyModel = {
+  modelPath: string;
+  inlineModel: AiNativeDesModelDefinition | null;
 };
 
 function usage(): string {
@@ -62,6 +68,7 @@ function usage(): string {
     '  pnpm run:experiment config/models/stochastic-single-machine.json seed-20260424',
     '  pnpm run:sweep config/models/stochastic-single-machine.json arrival-service-sweep',
     '  pnpm run:study config/studies/fulfillment-center-mvp.study.json',
+    '  pnpm run:study config/studies/micro-fulfillment-inline.study.json',
     '  pnpm run:model config/models/single-server-process.json baseline output/single-server-run.json',
     '  pnpm validate:model config/models/warehouse-material-flow.json'
   ].join('\n');
@@ -174,15 +181,17 @@ async function validateModel(positionalArgs: string[]): Promise<void> {
 async function runStudy(positionalArgs: string[]): Promise<void> {
   const studyPath = path.resolve(rootDir, positionalArgs[0] ?? defaultStudyPath);
   const study = await loadSimulationStudyCase(studyPath);
-  const modelPath = path.resolve(path.dirname(studyPath), study.modelPath);
   const outputDir = path.resolve(rootDir, positionalArgs[1] ?? study.outputDir ?? `output/studies/${study.id}`);
   const artifacts: StudyArtifact[] = [];
   let diagnostics: ModelDiagnosticsReport | null = null;
 
   await mkdir(outputDir, { recursive: true });
+  const preparedModel = await prepareStudyModel(study, studyPath, outputDir, artifacts);
 
   if (study.validate) {
-    diagnostics = await loadAndAnalyzeModel(modelPath);
+    diagnostics = preparedModel.inlineModel
+      ? analyzeDesModel(preparedModel.inlineModel)
+      : await loadAndAnalyzeModel(preparedModel.modelPath);
     const diagnosticsPath = path.join(outputDir, 'diagnostics.json');
     await writeJsonFile(diagnosticsPath, diagnostics);
     artifacts.push({ kind: 'diagnostics', path: diagnosticsPath });
@@ -190,7 +199,7 @@ async function runStudy(positionalArgs: string[]): Promise<void> {
     if (!diagnostics.valid && study.failOnValidationError) {
       const manifestPath = path.join(outputDir, 'manifest.json');
       artifacts.push({ kind: 'manifest', path: manifestPath });
-      const manifest = buildStudyManifest(study, modelPath, outputDir, diagnostics, artifacts);
+      const manifest = buildStudyManifest(study, preparedModel.modelPath, outputDir, diagnostics, artifacts);
       await writeJsonFile(manifestPath, manifest);
       printStudySummary(study, manifest, manifestPath);
       process.exitCode = 1;
@@ -198,7 +207,7 @@ async function runStudy(positionalArgs: string[]): Promise<void> {
     }
   }
 
-  const model = await loadAiNativeDesModel(modelPath);
+  const model = preparedModel.inlineModel ?? await loadAiNativeDesModel(preparedModel.modelPath);
 
   for (const operation of study.runs) {
     const result = runDesModelToResult(model, operation.experimentId);
@@ -220,7 +229,7 @@ async function runStudy(positionalArgs: string[]): Promise<void> {
 
   const manifestPath = path.join(outputDir, 'manifest.json');
   artifacts.push({ kind: 'manifest', path: manifestPath });
-  const manifest = buildStudyManifest(study, modelPath, outputDir, diagnostics, artifacts);
+  const manifest = buildStudyManifest(study, preparedModel.modelPath, outputDir, diagnostics, artifacts);
   await writeJsonFile(manifestPath, manifest);
   printStudySummary(study, manifest, manifestPath);
 }
@@ -246,6 +255,32 @@ function unreadableModelReport(modelPath: string, loadError: unknown): ModelDiag
     errors: [diagnostic],
     warnings: [],
     diagnostics: [diagnostic]
+  };
+}
+
+async function prepareStudyModel(
+  study: SimulationStudyCaseDefinition,
+  studyPath: string,
+  outputDir: string,
+  artifacts: StudyArtifact[]
+): Promise<PreparedStudyModel> {
+  if (study.model) {
+    const modelPath = path.join(outputDir, 'model.json');
+    await writeJsonFile(modelPath, study.model);
+    artifacts.push({ kind: 'model', path: modelPath });
+    return {
+      modelPath,
+      inlineModel: study.model
+    };
+  }
+
+  if (!study.modelPath) {
+    throw new Error(`Study ${study.id} must define modelPath or an inline model`);
+  }
+
+  return {
+    modelPath: path.resolve(path.dirname(studyPath), study.modelPath),
+    inlineModel: null
   };
 }
 

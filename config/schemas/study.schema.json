@@ -21,6 +21,1181 @@
         "modelPath": {
           "type": "string"
         },
+        "model": {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "type": "string",
+              "const": "des-platform.v1"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string",
+              "default": ""
+            },
+            "parameters": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string",
+                    "default": ""
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^\\/"
+                  },
+                  "valueType": {
+                    "type": "string",
+                    "enum": [
+                      "number",
+                      "integer",
+                      "string",
+                      "boolean"
+                    ],
+                    "default": "number"
+                  },
+                  "defaultValue": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "min": {
+                    "type": "number"
+                  },
+                  "max": {
+                    "type": "number"
+                  },
+                  "step": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "unit": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "path",
+                  "defaultValue"
+                ],
+                "additionalProperties": false
+              },
+              "default": []
+            },
+            "process": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "resourcePools": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "capacity": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "initialAvailable": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "capacity"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                },
+                "blocks": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "source"
+                          },
+                          "entityType": {
+                            "type": "string",
+                            "default": "entity"
+                          },
+                          "startAtSec": {
+                            "type": "number",
+                            "minimum": 0,
+                            "default": 0
+                          },
+                          "intervalSec": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "constant"
+                                      },
+                                      "value": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "value"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "uniform"
+                                      },
+                                      "min": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "max": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "min",
+                                      "max"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "triangular"
+                                      },
+                                      "min": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "mode": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "max": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "min",
+                                      "mode",
+                                      "max"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "normal"
+                                      },
+                                      "mean": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "sd": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0
+                                      },
+                                      "min": {
+                                        "type": "number",
+                                        "minimum": 0,
+                                        "default": 0
+                                      },
+                                      "max": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "mean",
+                                      "sd"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "exponential"
+                                      },
+                                      "mean": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "mean"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "scheduleAtSec": {
+                            "type": "array",
+                            "items": {
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          },
+                          "maxArrivals": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "attributes": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/parameters/items/properties/defaultValue"
+                            },
+                            "default": {}
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                          },
+                          "label": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                          },
+                          "description": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "queue"
+                          },
+                          "capacity": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "discipline": {
+                            "type": "string",
+                            "enum": [
+                              "fifo",
+                              "lifo"
+                            ],
+                            "default": "fifo"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                          },
+                          "label": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                          },
+                          "description": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "delay"
+                          },
+                          "durationSec": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/intervalSec"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "durationSec"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                          },
+                          "label": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                          },
+                          "description": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "service"
+                          },
+                          "resourcePoolId": {
+                            "type": "string"
+                          },
+                          "quantity": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "default": 1
+                          },
+                          "durationSec": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/intervalSec"
+                          },
+                          "queueCapacity": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "resourcePoolId",
+                          "durationSec"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                          },
+                          "label": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                          },
+                          "description": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "seize"
+                          },
+                          "resourcePoolId": {
+                            "type": "string"
+                          },
+                          "quantity": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "default": 1
+                          },
+                          "queueCapacity": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "resourcePoolId"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                          },
+                          "label": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                          },
+                          "description": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "release"
+                          },
+                          "resourcePoolId": {
+                            "type": "string"
+                          },
+                          "quantity": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "default": 1
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "resourcePoolId"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                          },
+                          "label": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                          },
+                          "description": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "assign"
+                          },
+                          "assignments": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/parameters/items/properties/defaultValue"
+                            },
+                            "default": {}
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                          },
+                          "label": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                          },
+                          "description": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "selectOutput"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                          },
+                          "label": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                          },
+                          "description": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "sink"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                          },
+                          "label": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                          },
+                          "description": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "moveByTransporter"
+                          },
+                          "fleetId": {
+                            "type": "string"
+                          },
+                          "fromNodeId": {
+                            "type": "string"
+                          },
+                          "toNodeId": {
+                            "type": "string"
+                          },
+                          "loadTimeSec": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/intervalSec",
+                            "default": 0
+                          },
+                          "unloadTimeSec": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/intervalSec",
+                            "default": 0
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "fleetId",
+                          "fromNodeId",
+                          "toNodeId"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                          },
+                          "label": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                          },
+                          "description": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "store"
+                          },
+                          "storageId": {
+                            "type": "string"
+                          },
+                          "itemIdAttribute": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "storageId"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                          },
+                          "label": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                          },
+                          "description": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "retrieve"
+                          },
+                          "storageId": {
+                            "type": "string"
+                          },
+                          "itemIdAttribute": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "storageId"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/id"
+                          },
+                          "label": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/label"
+                          },
+                          "description": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/process/properties/blocks/items/anyOf/0/properties/description"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "convey"
+                          },
+                          "conveyorId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "conveyorId"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "minItems": 1
+                },
+                "connections": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "from": {
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": "string"
+                      },
+                      "condition": {
+                        "type": "object",
+                        "properties": {
+                          "attribute": {
+                            "type": "string"
+                          },
+                          "operator": {
+                            "type": "string",
+                            "enum": [
+                              "equals",
+                              "not-equals",
+                              "greater-than",
+                              "greater-than-or-equal",
+                              "less-than",
+                              "less-than-or-equal"
+                            ],
+                            "default": "equals"
+                          },
+                          "value": {
+                            "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/parameters/items/properties/defaultValue"
+                          }
+                        },
+                        "required": [
+                          "attribute",
+                          "value"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "probability": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                }
+              },
+              "required": [
+                "id",
+                "blocks"
+              ],
+              "additionalProperties": false
+            },
+            "materialHandling": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "units": {
+                  "type": "string",
+                  "const": "meter",
+                  "default": "meter"
+                },
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "z": {
+                        "type": "number"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "point",
+                          "station",
+                          "dock",
+                          "storage",
+                          "home",
+                          "charger",
+                          "conveyor-port"
+                        ],
+                        "default": "point"
+                      },
+                      "label": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "z",
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1
+                },
+                "paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "from": {
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": "string"
+                      },
+                      "bidirectional": {
+                        "type": "boolean",
+                        "default": true
+                      },
+                      "lengthM": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "speedLimitMps": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "trafficControl": {
+                        "type": "string",
+                        "enum": [
+                          "reservation",
+                          "none"
+                        ],
+                        "default": "reservation"
+                      },
+                      "capacity": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "default": 1
+                      },
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "path-guided",
+                          "free-space",
+                          "conveyor"
+                        ],
+                        "default": "path-guided"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "from",
+                      "to"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                },
+                "transporterFleets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "vehicleType": {
+                        "type": "string",
+                        "enum": [
+                          "amr",
+                          "agv",
+                          "forklift",
+                          "worker",
+                          "crane"
+                        ],
+                        "default": "amr"
+                      },
+                      "navigation": {
+                        "type": "string",
+                        "enum": [
+                          "path-guided",
+                          "free-space"
+                        ],
+                        "default": "path-guided"
+                      },
+                      "count": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "homeNodeId": {
+                        "type": "string"
+                      },
+                      "speedMps": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "accelerationMps2": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "decelerationMps2": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "lengthM": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "widthM": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "minClearanceM": {
+                        "type": "number",
+                        "minimum": 0,
+                        "default": 0
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "count",
+                      "homeNodeId",
+                      "speedMps"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                },
+                "storageSystems": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "nodeId": {
+                        "type": "string"
+                      },
+                      "capacity": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "slotIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "nodeId",
+                      "capacity"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                },
+                "conveyors": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "entryNodeId": {
+                        "type": "string"
+                      },
+                      "exitNodeId": {
+                        "type": "string"
+                      },
+                      "lengthM": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "speedMps": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "capacity": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "entryNodeId",
+                      "exitNodeId",
+                      "lengthM",
+                      "speedMps"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                },
+                "zones": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "free-space",
+                          "restricted",
+                          "storage",
+                          "traffic-control"
+                        ]
+                      },
+                      "polygon": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "x": {
+                              "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/materialHandling/properties/nodes/items/properties/x"
+                            },
+                            "z": {
+                              "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/materialHandling/properties/nodes/items/properties/z"
+                            }
+                          },
+                          "required": [
+                            "x",
+                            "z"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "minItems": 3
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "polygon"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                },
+                "obstacles": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/materialHandling/properties/nodes/items/properties/x"
+                      },
+                      "z": {
+                        "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/materialHandling/properties/nodes/items/properties/z"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "widthM": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "depthM": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "heightM": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "default": 1
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "z",
+                      "id",
+                      "widthM",
+                      "depthM"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                }
+              },
+              "required": [
+                "id",
+                "nodes"
+              ],
+              "additionalProperties": false
+            },
+            "experiments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "seed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 1
+                  },
+                  "replications": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "default": 1
+                  },
+                  "seedStride": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "default": 1
+                  },
+                  "parameterOverrides": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/parameters/items/properties/defaultValue"
+                    },
+                    "default": {}
+                  },
+                  "sweep": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/parameters/items/properties/defaultValue"
+                      },
+                      "minItems": 1
+                    },
+                    "default": {}
+                  },
+                  "stopTimeSec": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "warmupSec": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 0
+                  },
+                  "maxEvents": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "default": 100000
+                  }
+                },
+                "required": [
+                  "id",
+                  "stopTimeSec"
+                ],
+                "additionalProperties": false
+              },
+              "default": []
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/definitions/SimulationStudyCaseDefinition/properties/model/properties/parameters/items/properties/defaultValue"
+              },
+              "default": {}
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "id",
+            "name",
+            "process"
+          ],
+          "additionalProperties": false
+        },
         "outputDir": {
           "type": "string"
         },
@@ -85,8 +1260,7 @@
       "required": [
         "schemaVersion",
         "id",
-        "name",
-        "modelPath"
+        "name"
       ],
       "additionalProperties": false
     }

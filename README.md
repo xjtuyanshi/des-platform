@@ -68,9 +68,11 @@ pnpm run:model
 pnpm run:experiment
 pnpm run:sweep
 pnpm run:study
+pnpm run:case
 pnpm validate:model
 pnpm report:model
 pnpm mvp:generic
+pnpm mvp:inline
 pnpm dev:api
 pnpm dev:viewer
 pnpm report:baseline
@@ -97,6 +99,7 @@ It is intentionally code/data based instead of drag-and-drop based:
 - Transporter travel time uses fleet speed, path speed limits, and optional acceleration/deceleration with triangular or trapezoidal velocity profiles.
 - Runtime outputs include resource utilization, resource wait times, transporter requests, transporter wait times, empty travel, loaded travel, and total transporter distance.
 - Study cases wrap validation, single runs, replications, sweeps, HTML reports, and a manifest into one input file that an AI agent can author or modify.
+- A study can reference a shared model with `modelPath` or embed the full model directly under `model` for a self-contained case file.
 - The machine-readable AI block catalog is generated at `config/catalog/des-library-catalog.json`.
 - Generated JSON Schemas include `process-flow.schema.json`, `material-handling.schema.json`, `model-dsl.schema.json`, and `study.schema.json`.
 
@@ -112,7 +115,9 @@ pnpm run:model config/models/stochastic-single-machine.json seed-20260424
 pnpm run:experiment config/models/stochastic-single-machine.json seed-20260424
 pnpm run:sweep config/models/stochastic-single-machine.json arrival-service-sweep
 pnpm run:study config/studies/fulfillment-center-mvp.study.json
+pnpm run:case config/studies/micro-fulfillment-inline.study.json
 pnpm mvp:generic
+pnpm mvp:inline
 ```
 
 Validation writes `output/<model-file>-diagnostics.json` with schema, process graph, material route, and experiment diagnostics. This is the first guardrail for AI-authored models: an agent can generate a model, validate it, repair specific diagnostic codes, and only then run the simulation.
@@ -138,6 +143,14 @@ It writes validation diagnostics, a baseline run, a replication experiment, a th
 The current generic MVP scenario is [fulfillment-center-mvp.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/models/fulfillment-center-mvp.json). It combines probabilistic order classes, assignment logic, AMR moves, storage, packing resources, conveyor travel, replications, parameter sweeps, and an HTML report.
 
 The current one-file study case is [fulfillment-center-mvp.study.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/studies/fulfillment-center-mvp.study.json). It is the simplest entry point for inputting one case and running the full simulation suite.
+
+For a fully self-contained case, [micro-fulfillment-inline.study.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/studies/micro-fulfillment-inline.study.json) embeds the whole Process Flow, Material Handling layout, experiments, and reporting plan in one file:
+
+```bash
+pnpm run:case config/studies/micro-fulfillment-inline.study.json
+```
+
+Inline study runs write a normalized model snapshot to `output/studies/<study-id>/model.json`, so generated results remain auditable even when the original input was a single case file.
 
 The AI-native library catalog is [des-library-catalog.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/catalog/des-library-catalog.json). It documents the available Process Flow blocks, Material Handling primitives, experiment controls, parameters, constraints, and examples in a structure an agent can use directly.
 

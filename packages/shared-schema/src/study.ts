@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { AiNativeDesModelDefinitionSchema } from './model-dsl.js';
+
 export const StudyOperationDefinitionSchema = z.object({
   experimentId: z.string(),
   outputName: z.string().optional(),
@@ -11,7 +13,8 @@ export const SimulationStudyCaseDefinitionSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().default(''),
-  modelPath: z.string(),
+  modelPath: z.string().optional(),
+  model: AiNativeDesModelDefinitionSchema.optional(),
   outputDir: z.string().optional(),
   validate: z.boolean().default(true),
   failOnValidationError: z.boolean().default(true),
@@ -25,6 +28,22 @@ export const SimulationStudyCaseDefinitionSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['runs'],
       message: 'Study must define at least one run, replication, or sweep operation'
+    });
+  }
+
+  if (!study.modelPath && !study.model) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['modelPath'],
+      message: 'Study must define either modelPath or an inline model'
+    });
+  }
+
+  if (study.modelPath && study.model) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['model'],
+      message: 'Study must define modelPath or inline model, not both'
     });
   }
 });

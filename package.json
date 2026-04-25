@@ -16,11 +16,13 @@
     "run:experiment": "pnpm --filter model-runner run experiment",
     "run:sweep": "pnpm --filter model-runner run sweep",
     "run:study": "pnpm --filter model-runner run study",
+    "run:case": "pnpm run:study",
     "validate:model": "pnpm --filter model-runner run validate",
     "simulate:baseline": "pnpm --filter sim-api simulate:baseline",
     "report:baseline": "pnpm --filter reporting report:baseline",
     "report:model": "pnpm --filter reporting report:model",
     "mvp:generic": "pnpm run:study config/studies/fulfillment-center-mvp.study.json",
+    "mvp:inline": "pnpm run:study config/studies/micro-fulfillment-inline.study.json",
     "build": "pnpm run generate:schema && pnpm run generate:catalog && pnpm run typecheck && pnpm --filter viewer build"
   },
   "devDependencies": {
