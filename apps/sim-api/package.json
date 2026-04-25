@@ -14,6 +14,8 @@
     "@types/ws": "^8.18.1"
   },
   "dependencies": {
+    "@des-platform/model-compiler": "workspace:*",
+    "@des-platform/process-flow": "workspace:*",
     "@des-platform/shared-schema": "workspace:*",
     "@des-platform/simulation-core": "workspace:*",
     "cors": "^2.8.5",

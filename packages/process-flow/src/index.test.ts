@@ -1,7 +1,7 @@
 import type { ProcessFlowDefinition } from '@des-platform/shared-schema/model-dsl';
 import { createMaterialHandlingRuntime } from '@des-platform/material-handling';
 
-import { runProcessFlow } from './index.js';
+import { createProcessFlowSimulation, runProcessFlow } from './index.js';
 
 describe('ProcessFlowRuntime', () => {
   it('runs a source-delay-sink flow deterministically', () => {
@@ -247,6 +247,52 @@ describe('ProcessFlowRuntime', () => {
       currentNodeId: 'storage'
     });
     expect(result.snapshot.materialHandling?.storageSystems[0]?.slots[0]?.itemId).toBeNull();
+  });
+
+  it('exposes active transporter moves in live runtime snapshots', () => {
+    const materialHandling = createMaterialHandlingRuntime({
+      id: 'live-transport',
+      units: 'meter',
+      nodes: [
+        { id: 'dock', type: 'dock', x: 0, z: 0 },
+        { id: 'rack', type: 'storage', x: 10, z: 0 }
+      ],
+      paths: [{ id: 'dock-rack', from: 'dock', to: 'rack', lengthM: 10, speedLimitMps: 1, bidirectional: true, mode: 'path-guided', trafficControl: 'reservation', capacity: 1 }],
+      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'dock', speedMps: 1, minClearanceM: 0 }],
+      storageSystems: [],
+      conveyors: [],
+      zones: [],
+      obstacles: []
+    });
+    const flow: ProcessFlowDefinition = {
+      id: 'live-transport-flow',
+      resourcePools: [],
+      blocks: [
+        { id: 'source', kind: 'source', entityType: 'pallet', startAtSec: 0, scheduleAtSec: [0], attributes: {} },
+        { id: 'move', kind: 'moveByTransporter', fleetId: 'amr', fromNodeId: 'dock', toNodeId: 'rack', loadTimeSec: 1, unloadTimeSec: 2 },
+        { id: 'sink', kind: 'sink' }
+      ],
+      connections: [
+        { from: 'source', to: 'move' },
+        { from: 'move', to: 'sink' }
+      ]
+    };
+
+    const result = createProcessFlowSimulation(flow, { materialHandling });
+    result.simulation.runUntil(2);
+    const snapshot = result.runtime.getSnapshot(result.simulation.nowSec);
+
+    expect(snapshot.activeTransports).toHaveLength(1);
+    expect(snapshot.activeTransports[0]).toMatchObject({
+      transporterUnitId: 'amr-1',
+      fleetId: 'amr',
+      entityId: 'source-1',
+      emptyRouteNodeIds: ['dock'],
+      loadedRouteNodeIds: ['dock', 'rack'],
+      loadStartSec: 0,
+      loadEndSec: 1,
+      loadedTravelStartSec: 1
+    });
   });
 
   it('includes empty transporter travel from the current vehicle node to the pickup node', () => {

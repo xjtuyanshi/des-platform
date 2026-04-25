@@ -159,10 +159,16 @@ export type ModelDiagnosticsReport = {
   diagnostics: ModelDiagnostic[];
 };
 
+export type GenericDesRuntime = ProcessFlowRunResult & {
+  model: AiNativeDesModelDefinition;
+  experiment: ExperimentDefinition;
+};
+
 export type CompiledDesModel = {
   model: AiNativeDesModelDefinition;
   defaultExperiment: ExperimentDefinition | null;
   createRuntime: () => ProcessFlowRunResult;
+  createRuntimeForExperiment: (experimentId?: string) => GenericDesRuntime;
   createMaterialHandlingRuntime: () => MaterialHandlingRuntime | null;
   runExperiment: (experimentId?: string) => ProcessFlowRunResult;
   runExperimentToResult: (experimentId?: string) => GenericDesRunResult;
@@ -196,6 +202,18 @@ export function compileDesModel(input: unknown): CompiledDesModel {
         materialHandling: createMaterialHandlingRuntimeForExperiment(model, defaultExperiment),
         seed: defaultExperiment?.seed
       }),
+    createRuntimeForExperiment: (experimentId?: string) => {
+      const experiment = resolveExperiment(model, experimentId);
+      const configuredModel = materializeModelForExperiment(model, experiment);
+      return {
+        ...createProcessFlowSimulation(configuredModel.process, {
+          materialHandling: configuredModel.materialHandling ? createMaterialHandlingRuntime(configuredModel.materialHandling) : null,
+          seed: experiment.seed
+        }),
+        model: configuredModel,
+        experiment
+      };
+    },
     createMaterialHandlingRuntime: () =>
       model.materialHandling ? createMaterialHandlingRuntime(model.materialHandling) : null,
     runExperiment: (experimentId?: string) => {

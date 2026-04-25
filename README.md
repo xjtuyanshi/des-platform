@@ -152,6 +152,14 @@ pnpm run:case config/studies/micro-fulfillment-inline.study.json
 
 Inline study runs write a normalized model snapshot to `output/studies/<study-id>/model.json` and a package index to `output/studies/<study-id>/index.html`, so generated results remain auditable and easy to inspect even when the original input was a single case file.
 
+For live verification, start the API server and open the generic DES runtime viewer:
+
+```bash
+pnpm dev:api
+```
+
+Then open `http://localhost:8787/api/des-runtime/micro-fulfillment-inline/viewer`. This is a live runtime session: the server advances the DES clock, WebSocket pushes current snapshots, and the browser draws the current material-handling state including active AMR transports.
+
 The AI-native library catalog is [des-library-catalog.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/catalog/des-library-catalog.json). It documents the available Process Flow blocks, Material Handling primitives, experiment controls, parameters, constraints, and examples in a structure an agent can use directly.
 
 Viewer defaults:

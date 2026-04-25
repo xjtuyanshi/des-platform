@@ -74,6 +74,29 @@ export type TransporterMoveRequest = {
   queuedAtSec: number;
 };
 
+export type ActiveTransportState = {
+  transporterUnitId: string;
+  fleetId: string;
+  entityId: string;
+  blockId: string;
+  startSec: number;
+  endSec: number;
+  emptyFromNodeId: string;
+  emptyToNodeId: string;
+  emptyRouteNodeIds: string[];
+  emptyTravelStartSec: number;
+  emptyTravelEndSec: number;
+  loadStartSec: number;
+  loadEndSec: number;
+  loadedFromNodeId: string;
+  loadedToNodeId: string;
+  loadedRouteNodeIds: string[];
+  loadedTravelStartSec: number;
+  loadedTravelEndSec: number;
+  unloadStartSec: number;
+  unloadEndSec: number;
+};
+
 export type RuntimeTransporterFleetStats = {
   fleetId: string;
   moveRequests: number;
@@ -106,6 +129,7 @@ export type ProcessFlowSnapshot = {
   entities: ProcessEntity[];
   resourcePools: RuntimeResourcePoolState[];
   transporterWaits: TransporterMoveRequest[];
+  activeTransports: ActiveTransportState[];
   transporterFleetStats: RuntimeTransporterFleetStats[];
   materialHandling: MaterialHandlingSnapshot | null;
   blockStats: Record<string, ProcessBlockStats>;
@@ -209,6 +233,7 @@ export class ProcessFlowRuntime {
   private readonly completedEntityIds: string[] = [];
   private readonly blockStats = new Map<string, ProcessBlockStats>();
   private readonly transporterWaits = new Map<string, TransporterMoveRequest[]>();
+  private readonly activeTransports = new Map<string, ActiveTransportState>();
   private readonly transporterFleetStats = new Map<string, RuntimeTransporterFleetMutableStats>();
   private attached = false;
 
@@ -265,6 +290,11 @@ export class ProcessFlowRuntime {
       })),
       resourcePools: [...this.resourcePools.values()].map((pool) => this.snapshotResourcePool(pool, nowSec)),
       transporterWaits: [...this.transporterWaits.values()].flat().map((request) => ({ ...request })),
+      activeTransports: [...this.activeTransports.values()].map((transport) => ({
+        ...transport,
+        emptyRouteNodeIds: [...transport.emptyRouteNodeIds],
+        loadedRouteNodeIds: [...transport.loadedRouteNodeIds]
+      })),
       transporterFleetStats: [...this.transporterFleetStats.values()].map((stats) => this.snapshotTransporterFleetStats(stats, nowSec)),
       materialHandling: this.materialHandling?.getSnapshot() ?? null,
       blockStats: Object.fromEntries(
@@ -538,6 +568,7 @@ export class ProcessFlowRuntime {
     stats.totalEmptyTravelTimeSec += payload.emptyTravelTimeSec;
     stats.totalLoadedTravelTimeSec += payload.loadedTravelTimeSec;
     materialHandling.releaseTransporter(payload.transporterUnitId, payload.toNodeId);
+    this.activeTransports.delete(payload.transporterUnitId);
     entity.attributes.locationNodeId = payload.toNodeId;
     entity.attributes.lastTransporterFleetId = payload.fleetId;
     entity.attributes.lastTransporterUnitId = payload.transporterUnitId;
@@ -688,6 +719,28 @@ export class ProcessFlowRuntime {
     const routeTravelTimeSec = emptyRoute.travelTimeSec + loadedRoute.travelTimeSec;
     const routeTrafficWaitSec = emptyRoute.trafficWaitSec + loadedRoute.trafficWaitSec;
     const busyDurationSec = loadedRoute.travelEndSec + request.unloadTimeSec - sim.nowSec;
+    this.activeTransports.set(unit.id, {
+      transporterUnitId: unit.id,
+      fleetId: request.fleetId,
+      entityId: request.entityId,
+      blockId: request.blockId,
+      startSec: sim.nowSec,
+      endSec: loadedRoute.travelEndSec + request.unloadTimeSec,
+      emptyFromNodeId: unit.currentNodeId,
+      emptyToNodeId: request.fromNodeId,
+      emptyRouteNodeIds: emptyRoute.nodeIds,
+      emptyTravelStartSec: emptyRoute.travelStartSec,
+      emptyTravelEndSec: emptyRoute.travelEndSec,
+      loadStartSec: emptyRoute.travelEndSec,
+      loadEndSec: loadedReadyAtSec,
+      loadedFromNodeId: request.fromNodeId,
+      loadedToNodeId: request.toNodeId,
+      loadedRouteNodeIds: loadedRoute.nodeIds,
+      loadedTravelStartSec: loadedRoute.travelStartSec,
+      loadedTravelEndSec: loadedRoute.travelEndSec,
+      unloadStartSec: loadedRoute.travelEndSec,
+      unloadEndSec: loadedRoute.travelEndSec + request.unloadTimeSec
+    });
     const entity = this.requireEntity(request.entityId);
     entity.attributes.lastEmptyRouteDistanceM = emptyRoute.distanceM;
     entity.attributes.lastEmptyRouteTravelTimeSec = emptyRoute.travelTimeSec;

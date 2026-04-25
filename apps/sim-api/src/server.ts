@@ -18,6 +18,17 @@ import {
   subscribeScenarioRuntime,
   updateScenarioRuntimeSpeed
 } from './runtime.js';
+import {
+  getGenericRuntimeState,
+  getGenericStudyCatalog,
+  pauseGenericRuntime,
+  renderGenericRuntimeViewer,
+  restartGenericRuntime,
+  resumeGenericRuntime,
+  startGenericRuntime,
+  subscribeGenericRuntime,
+  updateGenericRuntimeSpeed
+} from './generic-runtime.js';
 
 const port = Number(process.env.PORT ?? 8787);
 
@@ -30,6 +41,11 @@ function getScenarioParam(request: Request): string {
   return Array.isArray(value) ? value[0] ?? DEFAULT_SCENARIO_ID : value ?? DEFAULT_SCENARIO_ID;
 }
 
+function getStudyParam(request: Request): string {
+  const value = request.params.studyId;
+  return Array.isArray(value) ? value[0] ?? 'micro-fulfillment-inline' : value ?? 'micro-fulfillment-inline';
+}
+
 app.get('/api/health', (_request: Request, response: Response) => {
   response.json({ ok: true });
 });
@@ -37,6 +53,14 @@ app.get('/api/health', (_request: Request, response: Response) => {
 app.get('/api/scenarios', async (_request: Request, response: Response, next: NextFunction) => {
   try {
     response.json(await getScenarioCatalog());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/des-studies', async (_request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.json(await getGenericStudyCatalog());
   } catch (error) {
     next(error);
   }
@@ -116,6 +140,76 @@ app.post('/api/runtime/:scenarioId/speed', async (request: Request, response: Re
   }
 });
 
+app.get('/api/des-runtime/:studyId', async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.json(await getGenericRuntimeState(getStudyParam(request)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/des-runtime/:studyId/viewer', async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.type('html').send(renderGenericRuntimeViewer(getStudyParam(request)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/des-runtime/:studyId/start', async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.json(
+      await startGenericRuntime(
+        getStudyParam(request),
+        request.body?.speed,
+        request.body?.startTimeSec,
+        request.body?.experimentId
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/des-runtime/:studyId/pause', async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.json(await pauseGenericRuntime(getStudyParam(request)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/des-runtime/:studyId/resume', async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.json(await resumeGenericRuntime(getStudyParam(request)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/des-runtime/:studyId/restart', async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.json(
+      await restartGenericRuntime(
+        getStudyParam(request),
+        request.body?.speed,
+        request.body?.startTimeSec,
+        request.body?.experimentId
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/des-runtime/:studyId/speed', async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.json(await updateGenericRuntimeSpeed(getStudyParam(request), Number(request.body?.speed)));
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
   const message = error instanceof Error ? error.message : 'Unknown server error';
   response.status(500).json({ error: message });
@@ -138,6 +232,14 @@ wss.on('connection', (socket: WebSocket, _request: http.IncomingMessage, scenari
 
 server.on('upgrade', (request, socket, head) => {
   const requestUrl = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
+  if (requestUrl.pathname === '/ws/des') {
+    const studyId = requestUrl.searchParams.get('studyId') ?? 'micro-fulfillment-inline';
+    wss.handleUpgrade(request, socket, head, (websocket: WebSocket) => {
+      wss.emit('generic-connection', websocket, request, studyId);
+    });
+    return;
+  }
+
   if (requestUrl.pathname !== '/ws') {
     socket.destroy();
     return;
@@ -147,6 +249,18 @@ server.on('upgrade', (request, socket, head) => {
 
   wss.handleUpgrade(request, socket, head, (websocket: WebSocket) => {
     wss.emit('connection', websocket, request, scenarioId);
+  });
+});
+
+wss.on('generic-connection', (socket: WebSocket, _request: http.IncomingMessage, studyId: string) => {
+  const unsubscribe = subscribeGenericRuntime(studyId, (event) => {
+    if (socket.readyState === 1) {
+      socket.send(JSON.stringify(event));
+    }
+  });
+
+  socket.on('close', () => {
+    unsubscribe();
   });
 });
 
