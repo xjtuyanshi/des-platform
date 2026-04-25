@@ -10,8 +10,15 @@ import {
 } from '@des-platform/model-compiler';
 import type { ProcessFlowSnapshot } from '@des-platform/process-flow';
 import { loadAiNativeDesModel, loadSimulationStudyCase } from '@des-platform/shared-schema/loader';
-import type { AiNativeDesModelDefinition, ExperimentDefinition } from '@des-platform/shared-schema/model-dsl';
-import type { SimulationStudyCaseDefinition } from '@des-platform/shared-schema/study';
+import {
+  AiNativeDesModelDefinitionSchema,
+  type AiNativeDesModelDefinition,
+  type ExperimentDefinition
+} from '@des-platform/shared-schema/model-dsl';
+import {
+  SimulationStudyCaseDefinitionSchema,
+  type SimulationStudyCaseDefinition
+} from '@des-platform/shared-schema/study';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(currentDir, '../../..');
@@ -88,6 +95,7 @@ type GenericStudyBundle = {
 };
 
 const studyBundleCache = new Map<string, Promise<GenericStudyBundle>>();
+const inlineStudyBundles = new Map<string, GenericStudyBundle>();
 const runtimeControllers = new Map<string, GenericRuntimeController>();
 
 function clampSpeed(speed: number | undefined, fallback = 8): number {
@@ -161,10 +169,69 @@ async function getStudyPathById(studyId: string): Promise<string> {
 }
 
 async function getStudyBundle(studyId: string): Promise<GenericStudyBundle> {
+  const inlineBundle = inlineStudyBundles.get(studyId);
+  if (inlineBundle) {
+    return inlineBundle;
+  }
+
   if (!studyBundleCache.has(studyId)) {
     studyBundleCache.set(studyId, getStudyPathById(studyId).then(loadStudyBundleFromPath));
   }
   return studyBundleCache.get(studyId)!;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('DES case input must be a JSON object');
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizeInlineStudy(input: unknown): SimulationStudyCaseDefinition {
+  const payload = asRecord(input);
+  const candidate = 'study' in payload ? payload.study : payload;
+  const object = asRecord(candidate);
+
+  if (object.schemaVersion === 'des-platform.v1') {
+    const parsedModel = AiNativeDesModelDefinitionSchema.parse(object);
+    const model =
+      parsedModel.experiments.length > 0
+        ? parsedModel
+        : {
+            ...parsedModel,
+            experiments: [
+              {
+                id: 'baseline',
+                name: 'Baseline',
+                stopTimeSec: 3600
+              }
+            ]
+          };
+    const experimentId = model.experiments[0]!.id;
+    return SimulationStudyCaseDefinitionSchema.parse({
+      schemaVersion: 'des-platform.study.v1',
+      id: model.id,
+      name: `${model.name} Study`,
+      description: model.description,
+      model,
+      runs: [
+        {
+          experimentId,
+          outputName: `${experimentId}-run`,
+          htmlReport: true
+        }
+      ],
+      metadata: {
+        source: 'inline-workbench'
+      }
+    });
+  }
+
+  const study = SimulationStudyCaseDefinitionSchema.parse(object);
+  if (!study.model) {
+    throw new Error('Inline DES cases must embed model instead of using modelPath');
+  }
+  return study;
 }
 
 function resolveExperiment(
@@ -459,6 +526,17 @@ class GenericRuntimeController {
     };
   }
 
+  reset(bundle: GenericStudyBundle): void {
+    this.session?.close();
+    this.session = null;
+    this.broadcast({
+      type: 'generic-runtime-meta',
+      studyId: bundle.study.id,
+      study: toCatalogItem(bundle),
+      session: null
+    });
+  }
+
   private broadcast(event: GenericRuntimeEvent): void {
     for (const listener of this.listeners) {
       listener(event);
@@ -482,7 +560,34 @@ export async function getGenericStudyCatalog(): Promise<GenericStudyCatalogItem[
       .filter((entry) => entry.isFile() && /\.json$/i.test(entry.name))
       .map((entry) => loadStudyBundleFromPath(path.join(studiesDir, entry.name)))
   );
-  return bundles.map(toCatalogItem).sort((left, right) => left.name.localeCompare(right.name));
+  const byId = new Map<string, GenericStudyBundle>();
+  for (const bundle of bundles) {
+    byId.set(bundle.study.id, bundle);
+  }
+  for (const bundle of inlineStudyBundles.values()) {
+    byId.set(bundle.study.id, bundle);
+  }
+  return [...byId.values()].map(toCatalogItem).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function registerGenericInlineStudy(input: unknown): GenericRuntimeEnvelope & { viewerUrl: string } {
+  const study = normalizeInlineStudy(input);
+  const model = study.model!;
+  const bundle: GenericStudyBundle = {
+    study,
+    model,
+    diagnostics: analyzeDesModel(model)
+  };
+
+  inlineStudyBundles.set(study.id, bundle);
+  studyBundleCache.delete(study.id);
+  getGenericRuntimeController(study.id).reset(bundle);
+
+  return {
+    study: toCatalogItem(bundle),
+    session: null,
+    viewerUrl: `/api/des-runtime/${encodeURIComponent(study.id)}/viewer`
+  };
 }
 
 export function subscribeGenericRuntime(studyId: string, listener: GenericRuntimeListener): () => void {
@@ -521,6 +626,356 @@ export async function restartGenericRuntime(
 
 export async function updateGenericRuntimeSpeed(studyId: string, speed: number): Promise<GenericRuntimeEnvelope> {
   return getGenericRuntimeController(studyId).setSpeed(speed);
+}
+
+const defaultWorkbenchCase = {
+  schemaVersion: 'des-platform.study.v1',
+  id: 'workbench-micro-flow',
+  name: 'Workbench Micro Flow',
+  description: 'Small inline DES case for live runtime validation.',
+  model: {
+    schemaVersion: 'des-platform.v1',
+    id: 'workbench-micro-flow',
+    name: 'Workbench Micro Flow',
+    process: {
+      id: 'workbench-flow',
+      resourcePools: [
+        {
+          id: 'picker',
+          name: 'Picker',
+          capacity: 1
+        }
+      ],
+      blocks: [
+        {
+          id: 'source',
+          kind: 'source',
+          entityType: 'order',
+          startAtSec: 0,
+          intervalSec: 45,
+          maxArrivals: 12
+        },
+        {
+          id: 'move-to-rack',
+          kind: 'moveByTransporter',
+          fleetId: 'amr',
+          fromNodeId: 'dock',
+          toNodeId: 'rack',
+          loadTimeSec: 3,
+          unloadTimeSec: 2
+        },
+        {
+          id: 'pick',
+          kind: 'service',
+          resourcePoolId: 'picker',
+          durationSec: {
+            kind: 'triangular',
+            min: 25,
+            mode: 40,
+            max: 70
+          }
+        },
+        {
+          id: 'move-to-pack',
+          kind: 'moveByTransporter',
+          fleetId: 'amr',
+          fromNodeId: 'rack',
+          toNodeId: 'pack',
+          loadTimeSec: 2,
+          unloadTimeSec: 2
+        },
+        {
+          id: 'sink',
+          kind: 'sink'
+        }
+      ],
+      connections: [
+        {
+          from: 'source',
+          to: 'move-to-rack'
+        },
+        {
+          from: 'move-to-rack',
+          to: 'pick'
+        },
+        {
+          from: 'pick',
+          to: 'move-to-pack'
+        },
+        {
+          from: 'move-to-pack',
+          to: 'sink'
+        }
+      ]
+    },
+    materialHandling: {
+      id: 'workbench-layout',
+      nodes: [
+        {
+          id: 'dock',
+          type: 'dock',
+          x: 0,
+          z: 0
+        },
+        {
+          id: 'rack',
+          type: 'storage',
+          x: 12,
+          z: 0
+        },
+        {
+          id: 'pack',
+          type: 'station',
+          x: 12,
+          z: 8
+        }
+      ],
+      paths: [
+        {
+          id: 'dock-rack',
+          from: 'dock',
+          to: 'rack',
+          lengthM: 12,
+          capacity: 1
+        },
+        {
+          id: 'rack-pack',
+          from: 'rack',
+          to: 'pack',
+          lengthM: 8,
+          capacity: 1
+        }
+      ],
+      transporterFleets: [
+        {
+          id: 'amr',
+          vehicleType: 'amr',
+          navigation: 'path-guided',
+          count: 1,
+          homeNodeId: 'dock',
+          speedMps: 1.2,
+          accelerationMps2: 0.7,
+          decelerationMps2: 0.7
+        }
+      ]
+    },
+    experiments: [
+      {
+        id: 'baseline',
+        name: 'Baseline',
+        seed: 20260425,
+        stopTimeSec: 900
+      }
+    ]
+  },
+  runs: [
+    {
+      experimentId: 'baseline',
+      outputName: 'baseline-run',
+      htmlReport: true
+    }
+  ],
+  metadata: {
+    source: 'workbench-template'
+  }
+};
+
+export function renderGenericWorkbench(): string {
+  const encodedDefaultCase = JSON.stringify(JSON.stringify(defaultWorkbenchCase, null, 2));
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DES Workbench</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f8fb;
+        --panel: #ffffff;
+        --line: #d8e0ea;
+        --ink: #17212b;
+        --muted: #64748b;
+        --accent: #2d6cdf;
+        --danger: #a23b3b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Inter, "Avenir Next", "Segoe UI", sans-serif;
+      }
+      main {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 18px;
+      }
+      header, section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 12px;
+      }
+      h1, h2, p { margin: 0; }
+      h1 { font-size: 22px; line-height: 1.15; }
+      h2 { font-size: 15px; margin-bottom: 10px; }
+      p { color: var(--muted); }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-top: 12px;
+      }
+      button, select {
+        min-height: 34px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        color: var(--ink);
+        font: inherit;
+        padding: 6px 10px;
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+      button:disabled {
+        opacity: 0.45;
+      }
+      .workbench {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.6fr);
+        gap: 12px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 660px;
+        resize: vertical;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        font: 12px/1.45 "SFMono-Regular", Consolas, monospace;
+        color: var(--ink);
+      }
+      pre {
+        min-height: 180px;
+        max-height: 420px;
+        overflow: auto;
+        margin: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        background: #f8fafc;
+        font: 12px/1.45 "SFMono-Regular", Consolas, monospace;
+        white-space: pre-wrap;
+      }
+      pre.error {
+        color: var(--danger);
+        border-color: #e1a7a7;
+        background: #fff7f7;
+      }
+      @media (max-width: 920px) {
+        .workbench { grid-template-columns: 1fr; }
+        textarea { min-height: 520px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>DES Workbench</h1>
+        <div class="toolbar">
+          <select id="study"></select>
+          <button id="openSelected">Open Runtime</button>
+        </div>
+      </header>
+      <div class="workbench">
+        <section>
+          <h2>Case JSON</h2>
+          <textarea id="caseText" spellcheck="false"></textarea>
+          <div class="toolbar">
+            <button class="primary" id="register">Register Case</button>
+            <button id="openRuntime" disabled>Open Registered Runtime</button>
+          </div>
+        </section>
+        <section>
+          <h2>Result</h2>
+          <pre id="result">Idle</pre>
+        </section>
+      </div>
+    </main>
+    <script>
+      const initialCase = ${encodedDefaultCase};
+      const $ = (id) => document.getElementById(id);
+      let lastViewerUrl = null;
+
+      function viewerUrlFor(studyId) {
+        return '/api/des-runtime/' + encodeURIComponent(studyId) + '/viewer';
+      }
+
+      function setResult(value, error = false) {
+        const result = $('result');
+        result.className = error ? 'error' : '';
+        result.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+      }
+
+      async function loadStudies() {
+        const response = await fetch('/api/des-studies');
+        const studies = await response.json();
+        const select = $('study');
+        const selected = select.value;
+        select.innerHTML = '';
+        for (const study of studies) {
+          const option = document.createElement('option');
+          option.value = study.id;
+          option.textContent = study.name + ' (' + study.id + ')';
+          select.appendChild(option);
+        }
+        if (selected) select.value = selected;
+      }
+
+      $('caseText').value = initialCase;
+      $('openSelected').addEventListener('click', () => {
+        if ($('study').value) location.href = viewerUrlFor($('study').value);
+      });
+      $('register').addEventListener('click', async () => {
+        try {
+          const input = JSON.parse($('caseText').value);
+          const response = await fetch('/api/des-studies/inline', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(input)
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || JSON.stringify(data));
+          }
+          lastViewerUrl = data.viewerUrl;
+          $('openRuntime').disabled = false;
+          setResult({
+            registered: data.study.id,
+            model: data.study.modelName,
+            experiments: data.study.experimentIds,
+            viewerUrl: data.viewerUrl
+          });
+          await loadStudies();
+          $('study').value = data.study.id;
+        } catch (error) {
+          setResult(error instanceof Error ? error.message : String(error), true);
+        }
+      });
+      $('openRuntime').addEventListener('click', () => {
+        if (lastViewerUrl) location.href = lastViewerUrl;
+      });
+
+      loadStudies().catch((error) => setResult(error instanceof Error ? error.message : String(error), true));
+    </script>
+  </body>
+</html>`;
 }
 
 export function renderGenericRuntimeViewer(studyId: string): string {
