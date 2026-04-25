@@ -88,11 +88,14 @@ export type ActiveTransportState = {
   blockId: string;
   startSec: number;
   endSec: number;
+  requestQueuedAtSec: number;
+  dispatchWaitSec: number;
   emptyFromNodeId: string;
   emptyToNodeId: string;
   emptyRouteNodeIds: string[];
   emptyTravelStartSec: number;
   emptyTravelEndSec: number;
+  emptyTrafficWaitSec: number;
   loadStartSec: number;
   loadEndSec: number;
   loadedFromNodeId: string;
@@ -100,8 +103,10 @@ export type ActiveTransportState = {
   loadedRouteNodeIds: string[];
   loadedTravelStartSec: number;
   loadedTravelEndSec: number;
+  loadedTrafficWaitSec: number;
   unloadStartSec: number;
   unloadEndSec: number;
+  trafficWaitSec: number;
 };
 
 export type RuntimeTransporterFleetStats = {
@@ -816,7 +821,7 @@ export class ProcessFlowRuntime {
 
     while (index < waits.length) {
       const request = waits[index]!;
-      const unit = materialHandling.seizeTransporter(fleetId, request.entityId);
+      const unit = materialHandling.seizeTransporter(fleetId, request.entityId, request.fromNodeId);
       if (!unit) {
         break;
       }
@@ -853,11 +858,14 @@ export class ProcessFlowRuntime {
       blockId: request.blockId,
       startSec: sim.nowSec,
       endSec: loadedRoute.travelEndSec + request.unloadTimeSec,
+      requestQueuedAtSec: request.queuedAtSec,
+      dispatchWaitSec: sim.nowSec - request.queuedAtSec,
       emptyFromNodeId: unit.currentNodeId,
       emptyToNodeId: request.fromNodeId,
       emptyRouteNodeIds: emptyRoute.nodeIds,
       emptyTravelStartSec: emptyRoute.travelStartSec,
       emptyTravelEndSec: emptyRoute.travelEndSec,
+      emptyTrafficWaitSec: emptyRoute.trafficWaitSec,
       loadStartSec: emptyRoute.travelEndSec,
       loadEndSec: loadedReadyAtSec,
       loadedFromNodeId: request.fromNodeId,
@@ -865,8 +873,10 @@ export class ProcessFlowRuntime {
       loadedRouteNodeIds: loadedRoute.nodeIds,
       loadedTravelStartSec: loadedRoute.travelStartSec,
       loadedTravelEndSec: loadedRoute.travelEndSec,
+      loadedTrafficWaitSec: loadedRoute.trafficWaitSec,
       unloadStartSec: loadedRoute.travelEndSec,
-      unloadEndSec: loadedRoute.travelEndSec + request.unloadTimeSec
+      unloadEndSec: loadedRoute.travelEndSec + request.unloadTimeSec,
+      trafficWaitSec: routeTrafficWaitSec
     });
     const entity = this.requireEntity(request.entityId);
     entity.attributes.lastEmptyRouteDistanceM = emptyRoute.distanceM;

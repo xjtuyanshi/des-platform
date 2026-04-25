@@ -105,6 +105,34 @@ describe('MaterialHandlingRuntime', () => {
     });
   });
 
+  it('assigns the nearest idle transporter when a pickup node is provided', () => {
+    const runtime = createMaterialHandlingRuntime({
+      id: 'nearest-dispatch',
+      units: 'meter',
+      nodes: [
+        { id: 'home', type: 'home', x: 0, z: 0 },
+        { id: 'near', type: 'station', x: 1, z: 0 },
+        { id: 'far', type: 'station', x: 100, z: 0 }
+      ],
+      paths: [
+        { id: 'home-near', from: 'home', to: 'near', lengthM: 1, mode: 'path-guided', bidirectional: true, trafficControl: 'reservation', capacity: 1 },
+        { id: 'home-far', from: 'home', to: 'far', lengthM: 100, mode: 'path-guided', bidirectional: true, trafficControl: 'reservation', capacity: 1 }
+      ],
+      transporterFleets: [
+        { id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 2, homeNodeId: 'home', idlePolicy: 'stay', speedMps: 1, minClearanceM: 0 }
+      ],
+      storageSystems: [],
+      conveyors: [],
+      zones: [],
+      obstacles: []
+    });
+
+    expect(runtime.seizeTransporter('amr', 'order-1')?.id).toBe('amr-1');
+    runtime.releaseTransporter('amr-1', 'far');
+
+    expect(runtime.seizeTransporter('amr', 'order-2', 'near')?.id).toBe('amr-2');
+  });
+
   it('starts fleets at parking nodes and reports path conflict diagnostics', () => {
     const runtime = createMaterialHandlingRuntime({
       ...materialHandling,

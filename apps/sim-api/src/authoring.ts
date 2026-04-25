@@ -65,6 +65,92 @@ function schemaDiagnostics(error: { issues: Array<{ path: Array<string | number>
   }));
 }
 
+function countTokenToInteger(token: string | undefined): number | null {
+  if (!token) return null;
+  const normalized = token.trim().toLowerCase();
+  if (/^\d+$/.test(normalized)) {
+    const value = Number(normalized);
+    return Number.isInteger(value) && value > 0 ? value : null;
+  }
+  const words: Record<string, number> = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    一: 1,
+    二: 2,
+    两: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+    十: 10
+  };
+  return words[normalized] ?? null;
+}
+
+function constrainedPositiveInteger(
+  constraints: Record<string, unknown>,
+  keys: string[],
+  fallback: number
+): number {
+  for (const key of keys) {
+    const value = Number(constraints[key]);
+    if (Number.isInteger(value) && value > 0) {
+      return value;
+    }
+  }
+  return fallback;
+}
+
+function inferAmrCount(brief: string, constraints: Record<string, unknown>): number {
+  const constrained = constrainedPositiveInteger(constraints, ['amrCount', 'fleetCount', 'transporterCount'], 0);
+  if (constrained > 0) return Math.min(constrained, 50);
+
+  const countPattern = '(\\d+|one|two|three|four|five|six|seven|eight|nine|ten|一|二|两|三|四|五|六|七|八|九|十)';
+  const vehiclePattern = '(?:amrs?|agvs?|robots?|transporters?|搬运机器人|机器人|小车|车)';
+  const before = new RegExp(`${countPattern}\\s*(?:台|辆|个|部)?\\s*${vehiclePattern}`, 'i').exec(brief);
+  const after = new RegExp(`${vehiclePattern}\\s*${countPattern}\\s*(?:台|辆|个|部)?`, 'i').exec(brief);
+  return Math.min(countTokenToInteger(before?.[1] ?? after?.[1]) ?? 1, 50);
+}
+
+function inferWorkerCount(brief: string, constraints: Record<string, unknown>): number {
+  const constrained = constrainedPositiveInteger(constraints, ['workerCount', 'pickerCount', 'operatorCount'], 0);
+  if (constrained > 0) return Math.min(constrained, 50);
+
+  const countPattern = '(\\d+|one|two|three|four|five|six|seven|eight|nine|ten|一|二|两|三|四|五|六|七|八|九|十)';
+  const workerPattern = '(?:pickers?|operators?|workers?|工人|操作员|拣选员)';
+  const before = new RegExp(`${countPattern}\\s*(?:个|名|位)?\\s*${workerPattern}`, 'i').exec(brief);
+  const after = new RegExp(`${workerPattern}\\s*${countPattern}\\s*(?:个|名|位)?`, 'i').exec(brief);
+  return Math.min(countTokenToInteger(before?.[1] ?? after?.[1]) ?? 1, 50);
+}
+
+function inferArrivalMeanSec(brief: string, constraints: Record<string, unknown>): number {
+  const constrained = Number(constraints.arrivalMeanSec);
+  if (Number.isFinite(constrained) && constrained > 0) return constrained;
+  if (/(每分钟|每\s*1\s*分钟|per minute|every minute|once a minute|1\/min)/i.test(brief)) {
+    return 60;
+  }
+  const minutes = /every\s+(\d+(?:\.\d+)?)\s+minutes?/i.exec(brief)?.[1];
+  if (minutes) {
+    return Math.max(1, Number(minutes) * 60);
+  }
+  const seconds = /every\s+(\d+(?:\.\d+)?)\s+seconds?/i.exec(brief)?.[1];
+  if (seconds) {
+    return Math.max(1, Number(seconds));
+  }
+  return 45;
+}
+
 function normalizeStudyInput(input: unknown): SimulationStudyCaseDefinition {
   const payload = asRecord(input);
   const candidate = 'study' in payload ? payload.study : payload;
@@ -131,14 +217,27 @@ function synthesizeMaterialHandling(blocksInput: unknown): unknown {
     to: node.id,
     bidirectional: true,
     trafficControl: 'reservation',
-    capacity: 1
+    capacity: 1,
+    mode: 'path-guided'
   }));
   const fleetId = moveBlocks.find((block) => typeof block.fleetId === 'string')?.fleetId ?? 'amr';
   return {
     id: 'generated-layout',
+    units: 'meter',
     nodes,
     paths,
-    transporterFleets: [{ id: fleetId, count: 1, homeNodeId: 'home', speedMps: 1.2, accelerationMps2: 0.7, decelerationMps2: 0.7 }],
+    transporterFleets: [{
+      id: fleetId,
+      vehicleType: 'amr',
+      navigation: 'path-guided',
+      count: 1,
+      homeNodeId: 'home',
+      idlePolicy: 'stay',
+      speedMps: 1.2,
+      accelerationMps2: 0.7,
+      decelerationMps2: 0.7,
+      minClearanceM: 0.25
+    }],
     storageSystems: [],
     conveyors: [],
     zones: [],
@@ -269,10 +368,12 @@ function buildRuleBasedStudy(brief: string, constraints: Record<string, unknown>
   const id = slugify(String(constraints.id ?? brief.split(/[,.，。]/)[0] ?? ''), 'authored-des-case');
   const isManufacturing = /manufactur|assembly|生产|制造|装配|产线/.test(lower);
   const entityType = isManufacturing ? 'part' : 'order';
-  const arrivalMeanSec = Number(constraints.arrivalMeanSec ?? (/(每分钟|per minute|1\/min)/i.test(brief) ? 60 : 45));
+  const arrivalMeanSec = inferArrivalMeanSec(brief, constraints);
   const serviceModeSec = Number(constraints.serviceModeSec ?? (isManufacturing ? 75 : 45));
   const stopTimeSec = Number(constraints.stopTimeSec ?? 1800);
   const pickerName = isManufacturing ? 'operator' : 'picker';
+  const amrCount = inferAmrCount(brief, constraints);
+  const workerCount = inferWorkerCount(brief, constraints);
 
   const model: AiNativeDesModelDefinition = {
     schemaVersion: 'des-platform.v1',
@@ -280,13 +381,14 @@ function buildRuleBasedStudy(brief: string, constraints: Record<string, unknown>
     name: titleCase(id),
     description: brief,
     parameters: [
-      { id: 'arrival-mean-sec', name: 'Mean interarrival time', path: '/process/blocks/source/intervalSec/mean', valueType: 'number', defaultValue: arrivalMeanSec, min: 10, max: 180, step: 5, unit: 's', description: 'Entity interarrival mean.' },
+      { id: 'arrival-mean-sec', name: 'Mean interarrival time', path: '/process/blocks/source/intervalSec/mean', valueType: 'number', defaultValue: arrivalMeanSec, min: 1, max: Math.max(180, arrivalMeanSec), step: 1, unit: 's', description: 'Entity interarrival mean.' },
       { id: 'amr-speed-mps', name: 'AMR speed', path: '/materialHandling/transporterFleets/amr/speedMps', valueType: 'number', defaultValue: 1.2, min: 0.5, max: 2.5, step: 0.1, unit: 'm/s', description: 'Transporter maximum speed.' },
-      { id: `${pickerName}-count`, name: `${titleCase(pickerName)} count`, path: `/process/resourcePools/${pickerName}/capacity`, valueType: 'integer', defaultValue: 1, min: 1, max: 6, step: 1, unit: pickerName, description: 'Constrained worker or machine capacity.' }
+      { id: 'amr-count', name: 'AMR count', path: '/materialHandling/transporterFleets/amr/count', valueType: 'integer', defaultValue: amrCount, min: 1, max: Math.max(6, amrCount), step: 1, unit: 'vehicle', description: 'Number of AMRs available for dispatch.' },
+      { id: `${pickerName}-count`, name: `${titleCase(pickerName)} count`, path: `/process/resourcePools/${pickerName}/capacity`, valueType: 'integer', defaultValue: workerCount, min: 1, max: Math.max(6, workerCount), step: 1, unit: pickerName, description: 'Constrained worker or machine capacity.' }
     ],
     process: {
       id: `${id}-flow`,
-      resourcePools: [{ id: pickerName, name: titleCase(pickerName), capacity: 1 }],
+      resourcePools: [{ id: pickerName, name: titleCase(pickerName), capacity: workerCount }],
       blocks: [
         { id: 'source', kind: 'source', entityType, startAtSec: 0, intervalSec: { kind: 'exponential', mean: arrivalMeanSec }, maxArrivals: 30, attributes: { source: 'authored' } },
         { id: 'move-to-work', kind: 'moveByTransporter', fleetId: 'amr', fromNodeId: 'dock', toNodeId: 'work', loadTimeSec: 3, unloadTimeSec: 2 },
@@ -316,9 +418,9 @@ function buildRuleBasedStudy(brief: string, constraints: Record<string, unknown>
         { id: 'home-dock', from: 'home', to: 'dock', bidirectional: true, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
         { id: 'dock-work', from: 'dock', to: 'work', bidirectional: true, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
         { id: 'work-finish', from: 'work', to: 'finish', bidirectional: true, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
-        { id: 'home-parking', from: 'home', to: 'parking', bidirectional: true, trafficControl: 'none', capacity: 2, mode: 'path-guided' }
+        { id: 'home-parking', from: 'home', to: 'parking', bidirectional: true, trafficControl: 'none', capacity: Math.max(2, amrCount), mode: 'path-guided' }
       ],
-      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 1, homeNodeId: 'home', parkingNodeId: 'parking', chargerNodeId: 'charger', idlePolicy: 'stay', speedMps: 1.2, accelerationMps2: 0.7, decelerationMps2: 0.7, lengthM: 1.1, widthM: 0.8, minClearanceM: 0.25 }],
+      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: amrCount, homeNodeId: 'home', parkingNodeId: 'parking', chargerNodeId: 'charger', idlePolicy: 'stay', speedMps: 1.2, accelerationMps2: 0.7, decelerationMps2: 0.7, lengthM: 1.1, widthM: 0.8, minClearanceM: 0.25 }],
       storageSystems: [],
       conveyors: [],
       zones: [],

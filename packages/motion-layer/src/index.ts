@@ -940,7 +940,7 @@ export function verifyMaterialHandlingMotion(input: {
     const remainingDistanceM = transport ? remainingRouteDistance(point, routeNodeIds, nodesById) : 0;
     const physicsEtaSec = transport && phase === 'moving' ? input.nowSec + remainingDistanceM / Math.max(0.001, fleetSpeed) : null;
     const desEtaSec = transport ? transport.endSec : null;
-    const lagSec = physicsEtaSec !== null && desEtaSec !== null ? physicsEtaSec - desEtaSec : 0;
+    const lagSec = physicsEtaSec !== null && desEtaSec !== null ? Math.max(0, physicsEtaSec - desEtaSec) : 0;
     const targetNodeId = transport ? routeNodeIds.at(-1) ?? transport.loadedToNodeId : null;
     const verificationUnit: MaterialMotionVerificationUnit = {
       unitId: unit.id,
@@ -983,6 +983,9 @@ export function verifyMaterialHandlingMotion(input: {
     for (let rightIndex = leftIndex + 1; rightIndex < units.length; rightIndex += 1) {
       const left = units[leftIndex]!;
       const right = units[rightIndex]!;
+      if (left.status === 'idle' && right.status === 'idle') {
+        continue;
+      }
       const leftFleet = fleetsById.get(left.fleetId);
       const rightFleet = fleetsById.get(right.fleetId);
       const minDistance = Math.max(

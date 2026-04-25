@@ -344,11 +344,15 @@ export class MaterialHandlingRuntime {
     };
   }
 
-  seizeTransporter(fleetId: string, entityId: string): TransporterUnitState | null {
+  seizeTransporter(fleetId: string, entityId: string, preferredNodeId?: string): TransporterUnitState | null {
     this.requireFleet(fleetId);
     const unit = [...this.transporterUnits.values()]
       .filter((candidate) => candidate.fleetId === fleetId && candidate.status === 'idle')
-      .sort((left, right) => left.id.localeCompare(right.id))[0];
+      .sort((left, right) => {
+        const leftScore = this.transportAssignmentScore(left, fleetId, preferredNodeId);
+        const rightScore = this.transportAssignmentScore(right, fleetId, preferredNodeId);
+        return leftScore - rightScore || left.id.localeCompare(right.id);
+      })[0];
 
     if (!unit) {
       return null;
@@ -357,6 +361,17 @@ export class MaterialHandlingRuntime {
     unit.status = 'busy';
     unit.assignedEntityId = entityId;
     return { ...unit };
+  }
+
+  private transportAssignmentScore(unit: TransporterUnitState, fleetId: string, preferredNodeId?: string): number {
+    if (!preferredNodeId || unit.currentNodeId === preferredNodeId) {
+      return 0;
+    }
+    try {
+      return this.findShortestRoute(unit.currentNodeId, preferredNodeId, fleetId).travelTimeSec;
+    } catch {
+      return Number.POSITIVE_INFINITY;
+    }
   }
 
   releaseTransporter(unitId: string, nodeId?: string): TransporterUnitState {

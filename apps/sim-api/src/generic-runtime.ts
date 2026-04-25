@@ -1713,6 +1713,10 @@ export function renderGenericRuntimeViewer(studyId: string): string {
             <table id="transports"></table>
           </article>
           <article class="state-card">
+            <h3>Transport Queues</h3>
+            <table id="transportQueues"></table>
+          </article>
+          <article class="state-card">
             <h3>Transporter Units</h3>
             <table id="units"></table>
           </article>
@@ -1723,6 +1727,10 @@ export function renderGenericRuntimeViewer(studyId: string): string {
           <article class="state-card">
             <h3>Motion Verification</h3>
             <table id="motion"></table>
+          </article>
+          <article class="state-card">
+            <h3>Motion Warnings</h3>
+            <table id="motionWarnings"></table>
           </article>
         </div>
       </section>
@@ -2174,15 +2182,33 @@ export function renderGenericRuntimeViewer(studyId: string): string {
         const transports = snapshot?.activeTransports ?? [];
         setTableRows(
           'transports',
-          ['Unit', 'Entity', 'Phase', 'From', 'To'],
+          ['Unit', 'Entity', 'Phase', 'From', 'To', 'Dispatch Wait', 'Traffic Wait', 'ETA'],
           transports.map((transport) => [
             transport.transporterUnitId,
             transport.entityId,
             transportPhase(transport, nowSec),
             transport.loadedFromNodeId,
-            transport.loadedToNodeId
+            transport.loadedToNodeId,
+            rounded(transport.dispatchWaitSec ?? 0) + 's',
+            rounded(transport.trafficWaitSec ?? 0) + 's',
+            rounded(Math.max(0, (transport.endSec ?? nowSec) - nowSec)) + 's'
           ]),
           'No active transports'
+        );
+
+        const transportWaits = snapshot?.transporterWaits ?? [];
+        setTableRows(
+          'transportQueues',
+          ['Fleet', 'Entity', 'Block', 'Pickup', 'Dropoff', 'Wait'],
+          transportWaits.map((request) => [
+            request.fleetId,
+            request.entityId,
+            request.blockId,
+            request.fromNodeId,
+            request.toNodeId,
+            rounded(nowSec - request.queuedAtSec) + 's'
+          ]),
+          'No queued transport requests'
         );
 
         const units = snapshot?.materialHandling?.transporterUnits ?? [];
@@ -2223,6 +2249,17 @@ export function renderGenericRuntimeViewer(studyId: string): string {
             rounded(unit.lagSec) + 's'
           ]),
           motion?.enabled === false ? 'Motion verification disabled' : 'No motion state'
+        );
+        setTableRows(
+          'motionWarnings',
+          ['Code', 'Severity', 'Unit', 'Message'],
+          (motion?.warnings ?? []).map((warning) => [
+            warning.code,
+            warning.severity,
+            warning.unitId ?? '-',
+            warning.message
+          ]),
+          'No motion warnings'
         );
       }
 
