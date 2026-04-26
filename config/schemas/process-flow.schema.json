@@ -253,8 +253,15 @@
                     "enum": [
                       "fifo",
                       "lifo"
-                    ],
-                    "default": "fifo"
+                    ]
+                  },
+                  "overflowPolicy": {
+                    "type": "string",
+                    "enum": [
+                      "blockUpstream",
+                      "reject",
+                      "drop"
+                    ]
                   }
                 },
                 "required": [
@@ -737,6 +744,9 @@
                   },
                   "itemIdAttribute": {
                     "type": "string"
+                  },
+                  "skuAttribute": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -767,6 +777,18 @@
                   },
                   "itemIdAttribute": {
                     "type": "string"
+                  },
+                  "skuAttribute": {
+                    "type": "string"
+                  },
+                  "retrievePolicy": {
+                    "type": "string",
+                    "enum": [
+                      "exactItem",
+                      "anyMatchingSku",
+                      "fifo",
+                      "nearest"
+                    ]
                   }
                 },
                 "required": [

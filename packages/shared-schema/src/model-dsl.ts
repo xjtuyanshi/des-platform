@@ -206,7 +206,9 @@ export const MhCoordinate2Schema = z.object({
 export const MaterialNodeDefinitionSchema = MhCoordinate2Schema.extend({
   id: z.string(),
   type: z.enum(['point', 'station', 'dock', 'storage', 'home', 'parking', 'charger', 'conveyor-port']).default('point'),
-  label: z.string().optional()
+  label: z.string().optional(),
+  capacity: z.number().int().positive().optional(),
+  reservationDurationSec: z.number().nonnegative().optional()
 });
 
 export const MaterialPathDefinitionSchema = z.object({
@@ -406,7 +408,8 @@ export const SourceBlockDefinitionSchema = BlockBaseSchema.extend({
 export const QueueBlockDefinitionSchema = BlockBaseSchema.extend({
   kind: z.literal('queue'),
   capacity: z.number().int().positive().optional(),
-  discipline: z.enum(['fifo', 'lifo']).default('fifo')
+  discipline: z.enum(['fifo', 'lifo']).optional(),
+  overflowPolicy: z.enum(['blockUpstream', 'reject', 'drop']).optional()
 });
 
 export const DelayBlockDefinitionSchema = BlockBaseSchema.extend({
@@ -500,13 +503,16 @@ export const DropoffBlockDefinitionSchema = BlockBaseSchema.extend({
 export const StoreBlockDefinitionSchema = BlockBaseSchema.extend({
   kind: z.literal('store'),
   storageId: z.string(),
-  itemIdAttribute: z.string().optional()
+  itemIdAttribute: z.string().optional(),
+  skuAttribute: z.string().optional()
 });
 
 export const RetrieveBlockDefinitionSchema = BlockBaseSchema.extend({
   kind: z.literal('retrieve'),
   storageId: z.string(),
-  itemIdAttribute: z.string().optional()
+  itemIdAttribute: z.string().optional(),
+  skuAttribute: z.string().optional(),
+  retrievePolicy: z.enum(['exactItem', 'anyMatchingSku', 'fifo', 'nearest']).optional()
 });
 
 export const ConveyBlockDefinitionSchema = BlockBaseSchema.extend({

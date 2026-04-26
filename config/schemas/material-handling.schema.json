@@ -45,6 +45,14 @@
               },
               "label": {
                 "type": "string"
+              },
+              "capacity": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "reservationDurationSec": {
+                "type": "number",
+                "minimum": 0
               }
             },
             "required": [

@@ -88,6 +88,64 @@ describe('MaterialHandlingRuntime', () => {
     expect(runtime.getSnapshot().pathReservations.find((path) => path.pathId === 'dock-storage')?.reservations).toHaveLength(3);
   });
 
+  it('reserves intersection nodes with non-zero occupancy windows', () => {
+    const runtime = createMaterialHandlingRuntime({
+      id: 'intersection-node',
+      units: 'meter',
+      nodes: [
+        { id: 'west', type: 'station', x: 0, z: 0 },
+        { id: 'south', type: 'station', x: 1, z: -1 },
+        { id: 'intersection', type: 'station', x: 1, z: 0, capacity: 1, reservationDurationSec: 1 }
+      ],
+      paths: [
+        { id: 'west-intersection', from: 'west', to: 'intersection', lengthM: 1, bidirectional: false, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
+        { id: 'south-intersection', from: 'south', to: 'intersection', lengthM: 1, bidirectional: false, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' }
+      ],
+      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 2, homeNodeId: 'west', idlePolicy: 'stay', speedMps: 1, minClearanceM: 0 }],
+      storageSystems: [],
+      conveyors: [],
+      zones: [],
+      obstacles: []
+    });
+
+    const first = runtime.reserveRoute('west', 'intersection', 'amr', 0);
+    const second = runtime.reserveRoute('south', 'intersection', 'amr', 0);
+    const nodeReservation = runtime.getSnapshot().nodeReservations.find((node) => node.nodeId === 'intersection');
+
+    expect(first.nodeTrafficWaitSec).toBe(0);
+    expect(second.nodeTrafficWaitSec).toBe(1);
+    expect(second.travelStartSec).toBe(1);
+    expect(nodeReservation?.reservationDurationSec).toBe(1);
+    expect(nodeReservation?.reservations).toEqual([
+      { startSec: 1, endSec: 2 },
+      { startSec: 2, endSec: 3 }
+    ]);
+  });
+
+  it('builds a transporter task plan from empty and loaded reserved routes', () => {
+    const runtime = createMaterialHandlingRuntime(materialHandling);
+    const unit = runtime.seizeTransporter('amr', 'order-1', 'dock');
+
+    expect(unit).not.toBeNull();
+
+    const plan = runtime.planTransportTask({
+      unit: unit!,
+      fleetId: 'amr',
+      entityId: 'order-1',
+      fromNodeId: 'dock',
+      toNodeId: 'pack',
+      loadTimeSec: 2,
+      unloadTimeSec: 3,
+      requestedStartSec: 0
+    });
+
+    expect(plan.emptyRoute.nodeIds).toEqual(['home', 'dock']);
+    expect(plan.loadedRoute.nodeIds).toEqual(['dock', 'storage', 'pack']);
+    expect(plan.loadStartSec).toBeCloseTo(10 / 1.5, 5);
+    expect(plan.loadEndSec).toBeCloseTo(10 / 1.5 + 2, 5);
+    expect(plan.completionSec).toBeCloseTo(plan.loadedRoute.travelEndSec + 3, 5);
+  });
+
   it('seizes and releases transporter units deterministically', () => {
     const runtime = createMaterialHandlingRuntime(materialHandling);
 

@@ -54,6 +54,35 @@ describe('ProcessFlowRuntime', () => {
     });
   });
 
+  it('buffers upstream FIFO queues when the downstream service queue is full', () => {
+    const flow: ProcessFlowDefinition = {
+      id: 'finite-service-admission',
+      resourcePools: [{ id: 'machine', capacity: 1 }],
+      blocks: [
+        { id: 'source', kind: 'source', entityType: 'job', startAtSec: 0, scheduleAtSec: [0, 0, 0], attributes: {} },
+        { id: 'queue', kind: 'queue', capacity: 10 },
+        { id: 'service', kind: 'service', resourcePoolId: 'machine', quantity: 1, durationSec: 10, queueCapacity: 1 },
+        { id: 'sink', kind: 'sink' }
+      ],
+      connections: [
+        { from: 'source', to: 'queue' },
+        { from: 'queue', to: 'service' },
+        { from: 'service', to: 'sink' }
+      ]
+    };
+
+    const result = runProcessFlow(flow, 35);
+
+    expect(result.snapshot.completedEntities).toBe(3);
+    expect(result.snapshot.entities.map((entity) => entity.completedAtSec)).toEqual([10, 20, 30]);
+    expect(result.snapshot.blockStats.queue).toMatchObject({
+      currentQueueLength: 0,
+      maxQueueLength: 1,
+      totalWaitTimeSec: 10
+    });
+    expect(result.snapshot.resourcePools[0]?.maxQueueLength).toBe(1);
+  });
+
   it('samples stochastic interarrival and service times reproducibly by seed', () => {
     const flow: ProcessFlowDefinition = {
       id: 'stochastic-single-machine',
@@ -298,6 +327,85 @@ describe('ProcessFlowRuntime', () => {
       currentNodeId: 'storage'
     });
     expect(result.snapshot.materialHandling?.storageSystems[0]?.slots[0]?.itemId).toBeNull();
+  });
+
+  it('waits on storage full and wakes store requests after retrieve frees a slot', () => {
+    const materialHandling = createMaterialHandlingRuntime({
+      id: 'storage-waits',
+      units: 'meter',
+      nodes: [{ id: 'rack-node', type: 'storage', x: 0, z: 0 }],
+      paths: [],
+      transporterFleets: [],
+      storageSystems: [{ id: 'rack', nodeId: 'rack-node', capacity: 1 }],
+      conveyors: [],
+      zones: [],
+      obstacles: []
+    });
+    const flow: ProcessFlowDefinition = {
+      id: 'storage-wait-flow',
+      resourcePools: [],
+      blocks: [
+        { id: 'store-source', kind: 'source', entityType: 'pallet', startAtSec: 0, scheduleAtSec: [0, 0], attributes: {} },
+        { id: 'retrieve-source', kind: 'source', entityType: 'order', startAtSec: 0, scheduleAtSec: [5], attributes: { target: 'store-source-1' } },
+        { id: 'store', kind: 'store', storageId: 'rack' },
+        { id: 'retrieve', kind: 'retrieve', storageId: 'rack', itemIdAttribute: 'target' },
+        { id: 'store-sink', kind: 'sink' },
+        { id: 'retrieve-sink', kind: 'sink' }
+      ],
+      connections: [
+        { from: 'store-source', to: 'store' },
+        { from: 'store', to: 'store-sink' },
+        { from: 'retrieve-source', to: 'retrieve' },
+        { from: 'retrieve', to: 'retrieve-sink' }
+      ]
+    };
+
+    const result = runProcessFlow(flow, 10, undefined, { materialHandling });
+
+    expect(result.snapshot.completedEntities).toBe(3);
+    expect(result.snapshot.entities.find((entity) => entity.id === 'store-source-2')?.completedAtSec).toBe(5);
+    expect(result.snapshot.blockStats.store).toMatchObject({
+      maxQueueLength: 1,
+      totalWaitTimeSec: 5
+    });
+    expect(result.snapshot.materialHandling?.storageSystems[0]?.slots[0]?.itemId).toBe('store-source-2');
+  });
+
+  it('uses conveyor token capacity and wakes waiting entities on exit', () => {
+    const materialHandling = createMaterialHandlingRuntime({
+      id: 'conveyor-capacity',
+      units: 'meter',
+      nodes: [
+        { id: 'pack', type: 'station', x: 0, z: 0 },
+        { id: 'ship', type: 'dock', x: 10, z: 0 }
+      ],
+      paths: [],
+      transporterFleets: [],
+      storageSystems: [],
+      conveyors: [{ id: 'pack-ship', entryNodeId: 'pack', exitNodeId: 'ship', lengthM: 10, speedMps: 1, capacity: 1 }],
+      zones: [],
+      obstacles: []
+    });
+    const flow: ProcessFlowDefinition = {
+      id: 'conveyor-wip-flow',
+      resourcePools: [],
+      blocks: [
+        { id: 'source', kind: 'source', entityType: 'carton', startAtSec: 0, scheduleAtSec: [0, 0], attributes: {} },
+        { id: 'convey', kind: 'convey', conveyorId: 'pack-ship' },
+        { id: 'sink', kind: 'sink' }
+      ],
+      connections: [
+        { from: 'source', to: 'convey' },
+        { from: 'convey', to: 'sink' }
+      ]
+    };
+
+    const result = runProcessFlow(flow, 25, undefined, { materialHandling });
+
+    expect(result.snapshot.entities.map((entity) => entity.completedAtSec)).toEqual([10, 20]);
+    expect(result.snapshot.entities[1]?.attributes.lastBlockedReason).toBe('conveyor-full');
+    expect(result.snapshot.entities[1]?.attributes.lastBlockedWaitSec).toBe(10);
+    expect(result.snapshot.materialHandling?.conveyorStates[0]?.wip).toHaveLength(0);
   });
 
   it('exposes active transporter moves in live runtime snapshots', () => {

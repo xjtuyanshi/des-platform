@@ -262,7 +262,13 @@ function unreadableModelReport(modelPath: string, loadError: unknown): ModelDiag
     severity: 'error',
     code: 'model.unreadable',
     path: '$',
-    message: `Unable to read ${modelPath}: ${message}`
+    jsonPointer: '',
+    schemaPath: '$',
+    humanPath: '$',
+    message: `Unable to read ${modelPath}: ${message}`,
+    risk: 'safe',
+    repairCandidate: null,
+    requiresUserConfirmation: false
   };
   return {
     valid: false,

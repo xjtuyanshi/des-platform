@@ -153,7 +153,22 @@ export type ModelDiagnostic = {
   severity: ModelDiagnosticSeverity;
   code: string;
   path: string;
+  jsonPointer: string;
+  schemaPath: string;
+  humanPath: string;
   message: string;
+  risk: 'safe' | 'needs-confirmation';
+  repairCandidate: {
+    kind: 'json-patch';
+    confidence: number;
+    requiresUserConfirmation: boolean;
+    patch: Array<{
+      op: 'add' | 'replace' | 'remove';
+      path: string;
+      value?: unknown;
+    }>;
+  } | null;
+  requiresUserConfirmation: boolean;
 };
 
 export type ModelDiagnosticsReport = {
@@ -653,11 +668,18 @@ function buildDiagnosticsReport(diagnostics: ModelDiagnostic[]): ModelDiagnostic
 }
 
 function zodIssueToDiagnostic(issue: { path: Array<string | number>; message: string }): ModelDiagnostic {
+  const path = issue.path.length === 0 ? '$' : issue.path.join('.');
   return {
     severity: 'error',
     code: 'schema.invalid',
-    path: issue.path.length === 0 ? '$' : issue.path.join('.'),
-    message: issue.message
+    path,
+    jsonPointer: pathToJsonPointer(issue.path),
+    schemaPath: path,
+    humanPath: path,
+    message: issue.message,
+    risk: 'safe',
+    repairCandidate: null,
+    requiresUserConfirmation: false
   };
 }
 
@@ -781,7 +803,15 @@ function analyzeMaterialHandlingSemantics(model: AiNativeDesModelDefinition): Mo
       severity: diagnostic.severity,
       code: diagnostic.code,
       path: diagnostic.path,
-      message: diagnostic.message
+      jsonPointer: diagnosticPathToPointer(diagnostic.path),
+      schemaPath: diagnostic.path,
+      humanPath: diagnostic.path,
+      message: diagnostic.message,
+      risk: diagnostic.code === 'material.unmodeled-path-crossing' || diagnostic.code === 'material.path-obstacle-clearance'
+        ? 'needs-confirmation' as const
+        : 'safe' as const,
+      repairCandidate: null,
+      requiresUserConfirmation: diagnostic.code === 'material.unmodeled-path-crossing' || diagnostic.code === 'material.path-obstacle-clearance'
     }))
   );
 
@@ -869,7 +899,13 @@ function error(code: string, path: string, message: string): ModelDiagnostic {
     severity: 'error',
     code,
     path,
-    message
+    jsonPointer: diagnosticPathToPointer(path),
+    schemaPath: path,
+    humanPath: path,
+    message,
+    risk: 'safe',
+    repairCandidate: null,
+    requiresUserConfirmation: false
   };
 }
 
@@ -878,6 +914,26 @@ function warning(code: string, path: string, message: string): ModelDiagnostic {
     severity: 'warning',
     code,
     path,
-    message
+    jsonPointer: diagnosticPathToPointer(path),
+    schemaPath: path,
+    humanPath: path,
+    message,
+    risk: 'safe',
+    repairCandidate: null,
+    requiresUserConfirmation: false
   };
+}
+
+function pathToJsonPointer(path: Array<string | number>): string {
+  if (path.length === 0) {
+    return '';
+  }
+  return `/${path.map((part) => String(part).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`;
+}
+
+function diagnosticPathToPointer(path: string): string {
+  if (path === '$') {
+    return '';
+  }
+  return `/${path.replace(/^\$\.?/, '').split('.').filter(Boolean).map((part) => part.replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`;
 }

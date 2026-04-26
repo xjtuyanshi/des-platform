@@ -40,6 +40,9 @@ export type MaterialRouteSegmentReservation = {
   startSec: number;
   endSec: number;
   trafficWaitSec: number;
+  nodeReservationStartSec: number;
+  nodeReservationEndSec: number;
+  nodeWaitSec: number;
 };
 
 export type MaterialReservedRoutePlan = MaterialRoutePlan & {
@@ -47,8 +50,27 @@ export type MaterialReservedRoutePlan = MaterialRoutePlan & {
   travelStartSec: number;
   travelEndSec: number;
   trafficWaitSec: number;
+  pathTrafficWaitSec: number;
+  nodeTrafficWaitSec: number;
   reservedDurationSec: number;
   segments: MaterialRouteSegmentReservation[];
+};
+
+export type MaterialTransportTaskPlan = {
+  unit: TransporterUnitState;
+  fleetId: string;
+  entityId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  requestedStartSec: number;
+  emptyRoute: MaterialReservedRoutePlan;
+  loadStartSec: number;
+  loadEndSec: number;
+  loadedRoute: MaterialReservedRoutePlan;
+  unloadStartSec: number;
+  unloadEndSec: number;
+  completionSec: number;
+  trafficWaitSec: number;
 };
 
 export type TransporterUnitState = {
@@ -62,6 +84,8 @@ export type TransporterUnitState = {
 export type StorageSlotState = {
   id: string;
   itemId: string | null;
+  sku: string | null;
+  storedAtSec: number | null;
 };
 
 export type StorageSystemState = {
@@ -75,9 +99,11 @@ export type MaterialHandlingSnapshot = {
   nodes: MaterialNodeDefinition[];
   paths: MaterialPathDefinition[];
   pathReservations: PathReservationState[];
+  nodeReservations: NodeReservationState[];
   transporterUnits: TransporterUnitState[];
   storageSystems: StorageSystemState[];
   conveyors: ConveyorDefinition[];
+  conveyorStates: ConveyorRuntimeState[];
   zones: MaterialHandlingDefinition['zones'];
   obstacles: MaterialHandlingDefinition['obstacles'];
 };
@@ -96,6 +122,26 @@ export type PathReservationState = {
   reservations: Array<{
     startSec: number;
     endSec: number;
+  }>;
+};
+
+export type NodeReservationState = {
+  nodeId: string;
+  capacity: number;
+  reservationDurationSec: number;
+  reservations: Array<{
+    startSec: number;
+    endSec: number;
+  }>;
+};
+
+export type ConveyorRuntimeState = {
+  conveyorId: string;
+  capacity: number;
+  wip: Array<{
+    entityId: string;
+    enteredAtSec: number;
+    exitAtSec: number;
   }>;
 };
 
@@ -263,6 +309,8 @@ export class MaterialHandlingRuntime {
   private readonly transporterUnits = new Map<string, TransporterUnitState>();
   private readonly storageSystems = new Map<string, StorageSystemState>();
   private readonly pathReservations = new Map<string, Array<{ startSec: number; endSec: number }>>();
+  private readonly nodeReservations = new Map<string, Array<{ startSec: number; endSec: number }>>();
+  private readonly conveyorWip = new Map<string, Array<{ entityId: string; enteredAtSec: number; exitAtSec: number }>>();
 
   constructor(definition: MaterialHandlingDefinition) {
     this.definition = MaterialHandlingDefinitionSchema.parse(definition);
@@ -297,12 +345,23 @@ export class MaterialHandlingRuntime {
         capacity: path.capacity,
         reservations: (this.pathReservations.get(path.id) ?? []).map((reservation) => ({ ...reservation }))
       })),
+      nodeReservations: [...this.nodeMap.values()].map((node) => ({
+        nodeId: node.id,
+        capacity: node.capacity ?? 1,
+        reservationDurationSec: node.reservationDurationSec ?? 0.5,
+        reservations: (this.nodeReservations.get(node.id) ?? []).map((reservation) => ({ ...reservation }))
+      })),
       transporterUnits: [...this.transporterUnits.values()].map((unit) => ({ ...unit })),
       storageSystems: [...this.storageSystems.values()].map((storage) => ({
         ...storage,
         slots: storage.slots.map((slot) => ({ ...slot }))
       })),
       conveyors: this.definition.conveyors.map((conveyor) => ({ ...conveyor })),
+      conveyorStates: this.definition.conveyors.map((conveyor) => ({
+        conveyorId: conveyor.id,
+        capacity: conveyor.capacity ?? 1,
+        wip: (this.conveyorWip.get(conveyor.id) ?? []).map((entry) => ({ ...entry }))
+      })),
       zones: this.definition.zones.map((zone) => ({
         ...zone,
         polygon: zone.polygon.map((point) => ({ ...point }))
@@ -363,6 +422,8 @@ export class MaterialHandlingRuntime {
         travelStartSec: requestedStartSec,
         travelEndSec: requestedStartSec,
         trafficWaitSec: 0,
+        pathTrafficWaitSec: 0,
+        nodeTrafficWaitSec: 0,
         reservedDurationSec: 0,
         segments: []
       };
@@ -370,7 +431,8 @@ export class MaterialHandlingRuntime {
 
     const segments: MaterialRouteSegmentReservation[] = [];
     let currentSec = requestedStartSec;
-    let trafficWaitSec = 0;
+    let pathTrafficWaitSec = 0;
+    let nodeTrafficWaitSec = 0;
 
     for (let index = 0; index < route.pathIds.length; index += 1) {
       const fromNodeId = route.nodeIds[index]!;
@@ -378,10 +440,13 @@ export class MaterialHandlingRuntime {
       const edge = this.requireEdge(fromNodeId, toNodeId, route.pathIds[index]!);
       const travelProfile = this.calculateEdgeTravel(edge, fleetId);
       const travelTimeSec = travelProfile.travelTimeSec;
-      const startSec = this.reservePath(edge.path, currentSec, travelTimeSec);
+      const reserved = this.reservePathAndNode(edge.path, toNodeId, currentSec, travelTimeSec);
+      const startSec = reserved.pathStartSec;
       const endSec = startSec + travelTimeSec;
-      const segmentWaitSec = startSec - currentSec;
-      trafficWaitSec += segmentWaitSec;
+      const segmentNodeWaitSec = reserved.nodeWaitSec;
+      const segmentPathWaitSec = Math.max(0, startSec - currentSec - segmentNodeWaitSec);
+      pathTrafficWaitSec += segmentPathWaitSec;
+      nodeTrafficWaitSec += segmentNodeWaitSec;
       segments.push({
         pathId: edge.path.id,
         fromNodeId,
@@ -393,19 +458,59 @@ export class MaterialHandlingRuntime {
         requestedStartSec: currentSec,
         startSec,
         endSec,
-        trafficWaitSec: segmentWaitSec
+        trafficWaitSec: segmentPathWaitSec + segmentNodeWaitSec,
+        nodeReservationStartSec: reserved.nodeStartSec,
+        nodeReservationEndSec: reserved.nodeEndSec,
+        nodeWaitSec: segmentNodeWaitSec
       });
       currentSec = endSec;
     }
 
+    const trafficWaitSec = pathTrafficWaitSec + nodeTrafficWaitSec;
     return {
       ...route,
       requestedStartSec,
       travelStartSec: segments[0]?.startSec ?? requestedStartSec,
       travelEndSec: currentSec,
       trafficWaitSec,
+      pathTrafficWaitSec,
+      nodeTrafficWaitSec,
       reservedDurationSec: currentSec - requestedStartSec,
       segments
+    };
+  }
+
+  planTransportTask(options: {
+    unit: TransporterUnitState;
+    fleetId: string;
+    entityId: string;
+    fromNodeId: string;
+    toNodeId: string;
+    loadTimeSec: number;
+    unloadTimeSec: number;
+    requestedStartSec: number;
+  }): MaterialTransportTaskPlan {
+    const emptyRoute = this.reserveRoute(options.unit.currentNodeId, options.fromNodeId, options.fleetId, options.requestedStartSec);
+    const loadStartSec = emptyRoute.travelEndSec;
+    const loadEndSec = loadStartSec + options.loadTimeSec;
+    const loadedRoute = this.reserveRoute(options.fromNodeId, options.toNodeId, options.fleetId, loadEndSec);
+    const unloadStartSec = loadedRoute.travelEndSec;
+    const unloadEndSec = unloadStartSec + options.unloadTimeSec;
+    return {
+      unit: { ...options.unit },
+      fleetId: options.fleetId,
+      entityId: options.entityId,
+      fromNodeId: options.fromNodeId,
+      toNodeId: options.toNodeId,
+      requestedStartSec: options.requestedStartSec,
+      emptyRoute,
+      loadStartSec,
+      loadEndSec,
+      loadedRoute,
+      unloadStartSec,
+      unloadEndSec,
+      completionSec: unloadEndSec,
+      trafficWaitSec: emptyRoute.trafficWaitSec + loadedRoute.trafficWaitSec
     };
   }
 
@@ -450,7 +555,16 @@ export class MaterialHandlingRuntime {
     return { ...unit };
   }
 
-  store(storageId: string, itemId: string): StorageSlotState {
+  canStore(storageId: string, itemId: string): boolean {
+    const storage = this.requireStorage(storageId);
+    if (storage.slots.some((slot) => slot.itemId === itemId)) {
+      throw new Error(`Item ${itemId} is already stored in ${storageId}`);
+    }
+
+    return storage.slots.some((candidate) => candidate.itemId === null);
+  }
+
+  store(storageId: string, itemId: string, options: { sku?: string; storedAtSec?: number } = {}): StorageSlotState {
     const storage = this.requireStorage(storageId);
     if (storage.slots.some((slot) => slot.itemId === itemId)) {
       throw new Error(`Item ${itemId} is already stored in ${storageId}`);
@@ -462,18 +576,60 @@ export class MaterialHandlingRuntime {
     }
 
     slot.itemId = itemId;
+    slot.sku = options.sku ?? null;
+    slot.storedAtSec = options.storedAtSec ?? null;
     return { ...slot };
   }
 
-  retrieve(storageId: string, itemId: string): StorageSlotState {
+  canRetrieve(storageId: string, query: string, policy: 'exactItem' | 'anyMatchingSku' | 'fifo' | 'nearest' = 'exactItem'): boolean {
+    return Boolean(this.findRetrievalSlot(this.requireStorage(storageId), query, policy));
+  }
+
+  retrieve(storageId: string, query: string, policy: 'exactItem' | 'anyMatchingSku' | 'fifo' | 'nearest' = 'exactItem'): StorageSlotState {
     const storage = this.requireStorage(storageId);
-    const slot = storage.slots.find((candidate) => candidate.itemId === itemId);
+    const slot = this.findRetrievalSlot(storage, query, policy);
     if (!slot) {
-      throw new Error(`Item ${itemId} is not stored in ${storageId}`);
+      throw new Error(`Item ${query} is not stored in ${storageId}`);
     }
 
     slot.itemId = null;
+    slot.sku = null;
+    slot.storedAtSec = null;
     return { ...slot };
+  }
+
+  canEnterConveyor(conveyorId: string): boolean {
+    const conveyor = this.requireConveyor(conveyorId);
+    return (this.conveyorWip.get(conveyor.id) ?? []).length < (conveyor.capacity ?? 1);
+  }
+
+  enterConveyor(conveyorId: string, entityId: string, nowSec: number): { exitAtSec: number } {
+    const conveyor = this.requireConveyor(conveyorId);
+    const wip = this.conveyorWip.get(conveyor.id) ?? [];
+    if (wip.length >= (conveyor.capacity ?? 1)) {
+      throw new Error(`Conveyor ${conveyorId} is full`);
+    }
+
+    const exitAtSec = nowSec + this.getConveyorTravelTimeSec(conveyorId);
+    wip.push({ entityId, enteredAtSec: nowSec, exitAtSec });
+    this.conveyorWip.set(conveyor.id, wip);
+    return { exitAtSec };
+  }
+
+  exitConveyor(conveyorId: string, entityId: string): void {
+    const conveyor = this.requireConveyor(conveyorId);
+    const wip = this.conveyorWip.get(conveyor.id) ?? [];
+    const index = wip.findIndex((entry) => entry.entityId === entityId);
+    if (index < 0) {
+      throw new Error(`Entity ${entityId} is not on conveyor ${conveyorId}`);
+    }
+
+    wip.splice(index, 1);
+    if (wip.length === 0) {
+      this.conveyorWip.delete(conveyor.id);
+    } else {
+      this.conveyorWip.set(conveyor.id, wip);
+    }
   }
 
   getConveyorTravelTimeSec(conveyorId: string): number {
@@ -504,17 +660,58 @@ export class MaterialHandlingRuntime {
     return calculateTravelProfile(edge.distanceM, maxSpeedMps, fleet?.accelerationMps2, fleet?.decelerationMps2);
   }
 
-  private reservePath(path: MaterialPathDefinition, requestedStartSec: number, durationSec: number): number {
-    if (path.trafficControl === 'none' || durationSec <= 0) {
-      return requestedStartSec;
-    }
+  private reservePathAndNode(
+    path: MaterialPathDefinition,
+    toNodeId: string,
+    requestedStartSec: number,
+    travelTimeSec: number
+  ): { pathStartSec: number; nodeStartSec: number; nodeEndSec: number; nodeWaitSec: number } {
+    const node = this.requireNode(toNodeId);
+    const nodeDurationSec = node.reservationDurationSec ?? 0.5;
+    let candidatePathStartSec = requestedStartSec;
+    let nodeWaitSec = 0;
 
-    const reservations = this.pathReservations.get(path.id) ?? [];
-    const startSec = this.findEarliestReservationStart(reservations, path.capacity, requestedStartSec, durationSec);
-    reservations.push({ startSec, endSec: startSec + durationSec });
+    while (true) {
+      const pathReservations = this.pathReservations.get(path.id) ?? [];
+      const pathStartSec = path.trafficControl === 'none' || travelTimeSec <= 0
+        ? candidatePathStartSec
+        : this.findEarliestReservationStart(pathReservations, path.capacity, candidatePathStartSec, travelTimeSec);
+      const pathEndSec = pathStartSec + travelTimeSec;
+      const nodeReservations = this.nodeReservations.get(toNodeId) ?? [];
+      const nodeStartSec = nodeDurationSec <= 0
+        ? pathEndSec
+        : this.findEarliestReservationStart(nodeReservations, node.capacity ?? 1, pathEndSec, nodeDurationSec);
+
+      if (nodeStartSec <= pathEndSec + 1e-9) {
+        if (path.trafficControl !== 'none' && travelTimeSec > 0) {
+          this.commitReservation(this.pathReservations, path.id, pathStartSec, pathEndSec);
+        }
+        if (nodeDurationSec > 0) {
+          this.commitReservation(this.nodeReservations, toNodeId, nodeStartSec, nodeStartSec + nodeDurationSec);
+        }
+        return {
+          pathStartSec,
+          nodeStartSec,
+          nodeEndSec: nodeStartSec + nodeDurationSec,
+          nodeWaitSec
+        };
+      }
+
+      nodeWaitSec += Math.max(0, nodeStartSec - pathEndSec);
+      candidatePathStartSec = Math.max(candidatePathStartSec, nodeStartSec - travelTimeSec);
+    }
+  }
+
+  private commitReservation(
+    reservationsById: Map<string, Array<{ startSec: number; endSec: number }>>,
+    id: string,
+    startSec: number,
+    endSec: number
+  ): void {
+    const reservations = reservationsById.get(id) ?? [];
+    reservations.push({ startSec, endSec });
     reservations.sort((left, right) => left.startSec - right.startSec || left.endSec - right.endSec);
-    this.pathReservations.set(path.id, reservations);
-    return startSec;
+    reservationsById.set(id, reservations);
   }
 
   private findEarliestReservationStart(
@@ -557,9 +754,33 @@ export class MaterialHandlingRuntime {
       capacity: storage.capacity,
       slots: slotIds.map((id) => ({
         id,
-        itemId: null
+        itemId: null,
+        sku: null,
+        storedAtSec: null
       }))
     };
+  }
+
+  private findRetrievalSlot(
+    storage: StorageSystemState,
+    query: string,
+    policy: 'exactItem' | 'anyMatchingSku' | 'fifo' | 'nearest'
+  ): StorageSlotState | undefined {
+    switch (policy) {
+      case 'exactItem':
+        return storage.slots.find((candidate) => candidate.itemId === query);
+      case 'anyMatchingSku':
+        return storage.slots.find((candidate) => candidate.sku === query || candidate.itemId === query);
+      case 'fifo':
+        return storage.slots
+          .filter((candidate) => candidate.itemId !== null)
+          .sort((left, right) => (left.storedAtSec ?? 0) - (right.storedAtSec ?? 0) || left.id.localeCompare(right.id))[0];
+      case 'nearest':
+        return storage.slots.find((candidate) => candidate.itemId !== null);
+      default:
+        policy satisfies never;
+        return undefined;
+    }
   }
 
   private buildRoutePlan(

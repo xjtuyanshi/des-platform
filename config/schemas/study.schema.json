@@ -345,8 +345,15 @@
                             "enum": [
                               "fifo",
                               "lifo"
-                            ],
-                            "default": "fifo"
+                            ]
+                          },
+                          "overflowPolicy": {
+                            "type": "string",
+                            "enum": [
+                              "blockUpstream",
+                              "reject",
+                              "drop"
+                            ]
                           }
                         },
                         "required": [
@@ -829,6 +836,9 @@
                           },
                           "itemIdAttribute": {
                             "type": "string"
+                          },
+                          "skuAttribute": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -859,6 +869,18 @@
                           },
                           "itemIdAttribute": {
                             "type": "string"
+                          },
+                          "skuAttribute": {
+                            "type": "string"
+                          },
+                          "retrievePolicy": {
+                            "type": "string",
+                            "enum": [
+                              "exactItem",
+                              "anyMatchingSku",
+                              "fifo",
+                              "nearest"
+                            ]
                           }
                         },
                         "required": [
@@ -1003,6 +1025,14 @@
                       },
                       "label": {
                         "type": "string"
+                      },
+                      "capacity": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "reservationDurationSec": {
+                        "type": "number",
+                        "minimum": 0
                       }
                     },
                     "required": [

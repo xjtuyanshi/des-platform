@@ -55,13 +55,26 @@ function issuePath(path: Array<string | number>): string {
   return path.length === 0 ? '$' : `$.${path.map(String).join('.')}`;
 }
 
+function issuePointer(path: Array<string | number>): string {
+  if (path.length === 0) {
+    return '';
+  }
+  return `/${path.map((part) => String(part).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`;
+}
+
 function schemaDiagnostics(error: { issues: Array<{ path: Array<string | number>; message: string }> }): AuthoringDiagnostic[] {
   return error.issues.map((issue) => ({
     source: 'schema',
     severity: 'error',
     code: 'schema.invalid',
     path: issuePath(issue.path),
-    message: issue.message
+    jsonPointer: issuePointer(issue.path),
+    schemaPath: issuePath(issue.path),
+    humanPath: issuePath(issue.path),
+    message: issue.message,
+    risk: 'safe',
+    repairCandidate: null,
+    requiresUserConfirmation: false
   }));
 }
 
@@ -275,7 +288,13 @@ export function diagnoseDesStudy(input: unknown): AuthoringDiagnoseResult {
       severity: 'error',
       code: 'study.external-model-not-supported',
       path: '$.modelPath',
-      message: 'Authoring diagnostics require an inline model in this MVP.'
+      jsonPointer: '/modelPath',
+      schemaPath: '$.modelPath',
+      humanPath: '$.modelPath',
+      message: 'Authoring diagnostics require an inline model in this MVP.',
+      risk: 'safe',
+      repairCandidate: null,
+      requiresUserConfirmation: false
     });
     return {
       valid: false,

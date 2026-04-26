@@ -76,17 +76,24 @@
           "id": "capacity",
           "type": "integer",
           "required": false,
-          "description": "Maximum transient queue length."
+          "description": "Maximum entities physically waiting in the queue."
         },
         {
           "id": "discipline",
-          "type": "fifo|lifo",
+          "type": "fifo",
           "required": false,
-          "description": "Queue discipline. Current runtime behavior is FIFO."
+          "description": "Queue discipline. P0 runtime behavior is FIFO."
+        },
+        {
+          "id": "overflowPolicy",
+          "type": "blockUpstream|reject|drop",
+          "required": false,
+          "description": "Queue full behavior; P0 executes blockUpstream."
         }
       ],
       "constraints": [
-        "Capacity, when provided, must be positive."
+        "Capacity, when provided, must be positive.",
+        "Queue is a buffer; if downstream accepts, wait can be zero."
       ],
       "example": {
         "id": "pack-queue",
@@ -499,10 +506,16 @@
           "type": "string",
           "required": false,
           "description": "Entity attribute containing item id; entity id is used when omitted."
+        },
+        {
+          "id": "skuAttribute",
+          "type": "string",
+          "required": false,
+          "description": "Optional entity attribute containing SKU/class metadata."
         }
       ],
       "constraints": [
-        "Storage system must have free capacity.",
+        "If storage is full, store waits until a retrieve frees a slot.",
         "The item cannot already be stored in that system."
       ],
       "example": {
@@ -529,10 +542,22 @@
           "type": "string",
           "required": false,
           "description": "Entity attribute containing item id; entity id is used when omitted."
+        },
+        {
+          "id": "skuAttribute",
+          "type": "string",
+          "required": false,
+          "description": "Optional entity attribute containing SKU/class query."
+        },
+        {
+          "id": "retrievePolicy",
+          "type": "exactItem|anyMatchingSku|fifo|nearest",
+          "required": false,
+          "description": "Retrieval matching policy. P0 supports exactItem and anyMatchingSku."
         }
       ],
       "constraints": [
-        "The item must already be present in the storage system."
+        "If no matching item exists, retrieve waits until a store creates a match."
       ],
       "example": {
         "id": "retrieve-rack",
@@ -598,7 +623,7 @@
           "id": "conveyors",
           "type": "Conveyor[]",
           "required": false,
-          "description": "Fixed conveyors with length and speed."
+          "description": "Fixed conveyors with length, speed, and token capacity."
         },
         {
           "id": "zones",
@@ -618,6 +643,7 @@
         "Fleet parkingNodeId and chargerNodeId must reference nodes when provided.",
         "Storage slotIds length must match capacity when slotIds are provided.",
         "Path trafficControl defaults to reservation and path capacity defaults to 1.",
+        "Node capacity defaults to 1 and node reservation duration defaults to 0.5s in runtime.",
         "If accelerationMps2 and decelerationMps2 are present, route timing uses triangular/trapezoidal velocity profiles."
       ],
       "example": {

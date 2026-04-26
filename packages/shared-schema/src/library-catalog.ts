@@ -53,10 +53,11 @@ export const AiNativeDesLibraryCatalog: AiNativeDesLibraryCatalogDefinition = {
       purpose: 'Represent bounded or unbounded waiting before downstream work.',
       aiUsage: 'Use when a named buffer is important for reporting or capacity constraints.',
       parameters: [
-        { id: 'capacity', type: 'integer', required: false, description: 'Maximum transient queue length.' },
-        { id: 'discipline', type: 'fifo|lifo', required: false, description: 'Queue discipline. Current runtime behavior is FIFO.' }
+        { id: 'capacity', type: 'integer', required: false, description: 'Maximum entities physically waiting in the queue.' },
+        { id: 'discipline', type: 'fifo', required: false, description: 'Queue discipline. P0 runtime behavior is FIFO.' },
+        { id: 'overflowPolicy', type: 'blockUpstream|reject|drop', required: false, description: 'Queue full behavior; P0 executes blockUpstream.' }
       ],
-      constraints: ['Capacity, when provided, must be positive.'],
+      constraints: ['Capacity, when provided, must be positive.', 'Queue is a buffer; if downstream accepts, wait can be zero.'],
       example: { id: 'pack-queue', kind: 'queue', capacity: 20 }
     },
     {
@@ -215,9 +216,10 @@ export const AiNativeDesLibraryCatalog: AiNativeDesLibraryCatalogDefinition = {
       aiUsage: 'Use for racks, ASRS buffers, supermarkets, staging lanes, and WIP storage.',
       parameters: [
         { id: 'storageId', type: 'string', required: true, description: 'Storage system id.' },
-        { id: 'itemIdAttribute', type: 'string', required: false, description: 'Entity attribute containing item id; entity id is used when omitted.' }
+        { id: 'itemIdAttribute', type: 'string', required: false, description: 'Entity attribute containing item id; entity id is used when omitted.' },
+        { id: 'skuAttribute', type: 'string', required: false, description: 'Optional entity attribute containing SKU/class metadata.' }
       ],
-      constraints: ['Storage system must have free capacity.', 'The item cannot already be stored in that system.'],
+      constraints: ['If storage is full, store waits until a retrieve frees a slot.', 'The item cannot already be stored in that system.'],
       example: { id: 'store-rack', kind: 'store', storageId: 'rack-a' }
     },
     {
@@ -228,9 +230,11 @@ export const AiNativeDesLibraryCatalog: AiNativeDesLibraryCatalogDefinition = {
       aiUsage: 'Use when modeling putaway followed by picking or staged retrieval.',
       parameters: [
         { id: 'storageId', type: 'string', required: true, description: 'Storage system id.' },
-        { id: 'itemIdAttribute', type: 'string', required: false, description: 'Entity attribute containing item id; entity id is used when omitted.' }
+        { id: 'itemIdAttribute', type: 'string', required: false, description: 'Entity attribute containing item id; entity id is used when omitted.' },
+        { id: 'skuAttribute', type: 'string', required: false, description: 'Optional entity attribute containing SKU/class query.' },
+        { id: 'retrievePolicy', type: 'exactItem|anyMatchingSku|fifo|nearest', required: false, description: 'Retrieval matching policy. P0 supports exactItem and anyMatchingSku.' }
       ],
-      constraints: ['The item must already be present in the storage system.'],
+      constraints: ['If no matching item exists, retrieve waits until a store creates a match.'],
       example: { id: 'retrieve-rack', kind: 'retrieve', storageId: 'rack-a' }
     },
     {
@@ -256,11 +260,11 @@ export const AiNativeDesLibraryCatalog: AiNativeDesLibraryCatalogDefinition = {
         { id: 'paths', type: 'MaterialPath[]', required: false, description: 'Directed or bidirectional travel links with optional speed limits, trafficControl, and capacity.' },
         { id: 'transporterFleets', type: 'TransporterFleet[]', required: false, description: 'AMR, AGV, forklift, worker, crane fleets with optional acceleration and deceleration.' },
         { id: 'storageSystems', type: 'StorageSystem[]', required: false, description: 'Capacity-constrained storage at nodes.' },
-        { id: 'conveyors', type: 'Conveyor[]', required: false, description: 'Fixed conveyors with length and speed.' },
+        { id: 'conveyors', type: 'Conveyor[]', required: false, description: 'Fixed conveyors with length, speed, and token capacity.' },
         { id: 'zones', type: 'MaterialZone[]', required: false, description: 'Free-space, restricted, storage, or traffic-control polygons.' },
         { id: 'obstacles', type: 'MaterialObstacle[]', required: false, description: 'Fixed rectangular obstacles for layout analysis and future motion planning.' }
       ],
-      constraints: ['All references must point to defined node ids.', 'Fleet parkingNodeId and chargerNodeId must reference nodes when provided.', 'Storage slotIds length must match capacity when slotIds are provided.', 'Path trafficControl defaults to reservation and path capacity defaults to 1.', 'If accelerationMps2 and decelerationMps2 are present, route timing uses triangular/trapezoidal velocity profiles.'],
+      constraints: ['All references must point to defined node ids.', 'Fleet parkingNodeId and chargerNodeId must reference nodes when provided.', 'Storage slotIds length must match capacity when slotIds are provided.', 'Path trafficControl defaults to reservation and path capacity defaults to 1.', 'Node capacity defaults to 1 and node reservation duration defaults to 0.5s in runtime.', 'If accelerationMps2 and decelerationMps2 are present, route timing uses triangular/trapezoidal velocity profiles.'],
       example: { id: 'layout', nodes: [{ id: 'dock', type: 'dock', x: 0, z: 0 }, { id: 'parking', type: 'parking', x: -4, z: 0 }], paths: [{ id: 'dock-rack', from: 'dock', to: 'rack', trafficControl: 'reservation', capacity: 1 }], transporterFleets: [{ id: 'amr', count: 2, homeNodeId: 'dock', parkingNodeId: 'parking', speedMps: 1.5, accelerationMps2: 0.8, decelerationMps2: 0.8 }] }
     },
     {

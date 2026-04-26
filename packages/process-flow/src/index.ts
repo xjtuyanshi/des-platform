@@ -1,5 +1,5 @@
 import { DesSimulation, type DesEventPayload, type DesRunResult } from '@des-platform/des-core';
-import type { MaterialHandlingRuntime, MaterialHandlingSnapshot, TransporterUnitState } from '@des-platform/material-handling';
+import type { MaterialHandlingRuntime, MaterialHandlingSnapshot, MaterialTransportTaskPlan, TransporterUnitState } from '@des-platform/material-handling';
 import {
   ProcessFlowDefinitionSchema,
   type DslLiteral,
@@ -14,8 +14,10 @@ import { createSeededRandom, sampleTimeSec, type RandomSource } from './stochast
 
 const SOURCE_CREATE_EVENT = 'process.source.create';
 const ENTITY_ENTER_EVENT = 'process.entity.enter';
+const BLOCK_ROUTE_EVENT = 'process.block.route';
 const SERVICE_COMPLETE_EVENT = 'process.service.complete';
 const TRANSPORT_COMPLETE_EVENT = 'process.material.transport.complete';
+const CONVEYOR_EXIT_EVENT = 'process.material.conveyor.exit';
 
 type HoldWaitRequest = {
   entityId: string;
@@ -38,7 +40,33 @@ export type ProcessEntity = {
 export type ProcessBlockStats = {
   entered: number;
   completed: number;
+  currentQueueLength: number;
   maxQueueLength: number;
+  totalWaitTimeSec: number;
+  completedWaits: number;
+  averageWaitTimeSec: number;
+  blockedOutputCount: number;
+  rejectedCount: number;
+  droppedCount: number;
+};
+
+export type AdmissionResult =
+  | { status: 'accepted' }
+  | { status: 'blocked'; reason: string; receiverBlockId: string }
+  | { status: 'rejected'; reason: string; branch?: string };
+
+type QueueWaitEntry = {
+  entityId: string;
+  blockId: string;
+  queuedAtSec: number;
+};
+
+type BlockedEntityRoute = {
+  entityId: string;
+  fromBlockId: string;
+  toBlockId: string;
+  queuedAtSec: number;
+  reason: string;
 };
 
 export type ResourceWaitMode = 'service' | 'seize';
@@ -50,6 +78,31 @@ export type ResourceWaitRequest = {
   quantity: number;
   mode: ResourceWaitMode;
   durationSec: number;
+  queuedAtSec: number;
+};
+
+type StorageStoreWaitRequest = {
+  entityId: string;
+  blockId: string;
+  storageId: string;
+  itemId: string;
+  sku: string | null;
+  queuedAtSec: number;
+};
+
+type StorageRetrieveWaitRequest = {
+  entityId: string;
+  blockId: string;
+  storageId: string;
+  query: string;
+  policy: 'exactItem' | 'anyMatchingSku' | 'fifo' | 'nearest';
+  queuedAtSec: number;
+};
+
+type ConveyorWaitRequest = {
+  entityId: string;
+  blockId: string;
+  conveyorId: string;
   queuedAtSec: number;
 };
 
@@ -165,6 +218,11 @@ type EntityEnterPayload = {
   blockId: string;
 };
 
+type BlockRoutePayload = {
+  entityId: string;
+  blockId: string;
+};
+
 type ServiceCompletePayload = {
   entityId: string;
   blockId: string;
@@ -188,11 +246,21 @@ type TransportCompletePayload = {
   loadedTravelTimeSec: number;
 };
 
+type ConveyorExitPayload = {
+  entityId: string;
+  blockId: string;
+  conveyorId: string;
+};
+
 function asSourceCreatePayload(payload: DesEventPayload): SourceCreatePayload {
   return { sourceId: String(payload.sourceId) };
 }
 
 function asEntityEnterPayload(payload: DesEventPayload): EntityEnterPayload {
+  return { entityId: String(payload.entityId), blockId: String(payload.blockId) };
+}
+
+function asBlockRoutePayload(payload: DesEventPayload): BlockRoutePayload {
   return { entityId: String(payload.entityId), blockId: String(payload.blockId) };
 }
 
@@ -223,6 +291,14 @@ function asTransportCompletePayload(payload: DesEventPayload): TransportComplete
   };
 }
 
+function asConveyorExitPayload(payload: DesEventPayload): ConveyorExitPayload {
+  return {
+    entityId: String(payload.entityId),
+    blockId: String(payload.blockId),
+    conveyorId: String(payload.conveyorId)
+  };
+}
+
 function cloneAttributes(attributes: Record<string, DslLiteral>): Record<string, DslLiteral> {
   return { ...attributes };
 }
@@ -248,8 +324,19 @@ export class ProcessFlowRuntime {
   private readonly activeTransports = new Map<string, ActiveTransportState>();
   private readonly transporterFleetStats = new Map<string, RuntimeTransporterFleetMutableStats>();
   private readonly holdWaitsBySignal = new Map<string, HoldWaitRequest[]>();
+  private readonly holdGateWaitsBySignal = new Map<string, HoldWaitRequest[]>();
   private readonly batchQueues = new Map<string, string[]>();
   private readonly batchCounts = new Map<string, number>();
+  private readonly queueWaits = new Map<string, QueueWaitEntry[]>();
+  private readonly queueGateWaits = new Map<string, QueueWaitEntry[]>();
+  private readonly blockedOutputsByReceiver = new Map<string, BlockedEntityRoute[]>();
+  private readonly blockedQueuesByReceiver = new Map<string, Set<string>>();
+  private readonly pendingAdmissionsByBlock = new Map<string, number>();
+  private readonly drainingQueueIds = new Set<string>();
+  private readonly resourceGateWaitsByBlock = new Map<string, ResourceWaitRequest[]>();
+  private readonly storageStoreWaitsByStorage = new Map<string, StorageStoreWaitRequest[]>();
+  private readonly storageRetrieveWaitsByStorage = new Map<string, StorageRetrieveWaitRequest[]>();
+  private readonly conveyorWaitsByConveyor = new Map<string, ConveyorWaitRequest[]>();
   private attached = false;
 
   constructor(
@@ -264,7 +351,14 @@ export class ProcessFlowRuntime {
       this.blockStats.set(block.id, {
         entered: 0,
         completed: 0,
-        maxQueueLength: 0
+        currentQueueLength: 0,
+        maxQueueLength: 0,
+        totalWaitTimeSec: 0,
+        completedWaits: 0,
+        averageWaitTimeSec: 0,
+        blockedOutputCount: 0,
+        rejectedCount: 0,
+        droppedCount: 0
       });
     }
 
@@ -287,8 +381,10 @@ export class ProcessFlowRuntime {
     this.attached = true;
     sim.on(SOURCE_CREATE_EVENT, ({ sim: runtime, event }) => this.handleSourceCreate(runtime, asSourceCreatePayload(event.payload)));
     sim.on(ENTITY_ENTER_EVENT, ({ sim: runtime, event }) => this.handleEntityEnter(runtime, asEntityEnterPayload(event.payload)));
+    sim.on(BLOCK_ROUTE_EVENT, ({ sim: runtime, event }) => this.handleBlockRoute(runtime, asBlockRoutePayload(event.payload)));
     sim.on(SERVICE_COMPLETE_EVENT, ({ sim: runtime, event }) => this.handleServiceComplete(runtime, asServiceCompletePayload(event.payload)));
     sim.on(TRANSPORT_COMPLETE_EVENT, ({ sim: runtime, event }) => this.handleTransportComplete(runtime, asTransportCompletePayload(event.payload)));
+    sim.on(CONVEYOR_EXIT_EVENT, ({ sim: runtime, event }) => this.handleConveyorExit(runtime, asConveyorExitPayload(event.payload)));
     this.scheduleSources(sim);
   }
 
@@ -462,6 +558,7 @@ export class ProcessFlowRuntime {
   private handleEntityEnter(sim: DesSimulation<ProcessRuntimeState>, payload: EntityEnterPayload): void {
     const entity = this.requireEntity(payload.entityId);
     const block = this.requireBlock(payload.blockId);
+    this.releasePendingAdmission(block.id);
     entity.currentBlockId = block.id;
     entity.visitedBlockIds.push(block.id);
     this.incrementEntered(block.id);
@@ -474,9 +571,9 @@ export class ProcessFlowRuntime {
         break;
       case 'delay':
         sim.scheduleIn(
-          ENTITY_ENTER_EVENT,
+          BLOCK_ROUTE_EVENT,
           this.sampleTime(block.durationSec, `${block.id}.durationSec`),
-          { entityId: entity.id, blockId: this.requireNextConnection(block.id, entity).to },
+          { entityId: entity.id, blockId: block.id },
           { priority: 50 }
         );
         this.incrementCompleted(block.id);
@@ -556,29 +653,13 @@ export class ProcessFlowRuntime {
         this.handlePickupDropoffBlock(sim, block, entity, block.unloadTimeSec, 'dropoff');
         break;
       case 'store':
-        this.requireMaterialHandling(block.id).store(block.storageId, this.itemIdFor(entity, block.itemIdAttribute));
-        entity.attributes.storageId = block.storageId;
-        this.incrementCompleted(block.id);
-        this.routeFromBlock(sim, block.id, entity);
+        this.handleStoreBlock(sim, block, entity);
         break;
       case 'retrieve':
-        this.requireMaterialHandling(block.id).retrieve(block.storageId, this.itemIdFor(entity, block.itemIdAttribute));
-        entity.attributes.storageId = null;
-        this.incrementCompleted(block.id);
-        this.routeFromBlock(sim, block.id, entity);
+        this.handleRetrieveBlock(sim, block, entity);
         break;
       case 'convey': {
-        const materialHandling = this.requireMaterialHandling(block.id);
-        const conveyor = materialHandling.getConveyor(block.conveyorId);
-        entity.attributes.conveyorId = block.conveyorId;
-        entity.attributes.locationNodeId = conveyor.exitNodeId;
-        sim.scheduleIn(
-          ENTITY_ENTER_EVENT,
-          materialHandling.getConveyorTravelTimeSec(block.conveyorId),
-          { entityId: entity.id, blockId: this.requireNextConnection(block.id, entity).to },
-          { priority: 50 }
-        );
-        this.incrementCompleted(block.id);
+        this.handleConveyBlock(sim, block, entity);
         break;
       }
       case 'sink':
@@ -590,6 +671,30 @@ export class ProcessFlowRuntime {
       default:
         block satisfies never;
     }
+  }
+
+  private handleBlockRoute(sim: DesSimulation<ProcessRuntimeState>, payload: BlockRoutePayload): void {
+    const entity = this.requireEntity(payload.entityId);
+    this.routeFromBlock(sim, payload.blockId, entity);
+  }
+
+  private handleConveyorExit(sim: DesSimulation<ProcessRuntimeState>, payload: ConveyorExitPayload): void {
+    const entity = this.requireEntity(payload.entityId);
+    const block = this.requireBlock(payload.blockId);
+    if (block.kind !== 'convey') {
+      throw new Error(`Block ${payload.blockId} is not a convey block`);
+    }
+
+    const materialHandling = this.requireMaterialHandling(block.id);
+    const conveyor = materialHandling.getConveyor(payload.conveyorId);
+    materialHandling.exitConveyor(payload.conveyorId, entity.id);
+    entity.attributes.conveyorId = payload.conveyorId;
+    entity.attributes.locationNodeId = conveyor.exitNodeId;
+    this.incrementCompleted(block.id);
+    this.routeFromBlock(sim, block.id, entity);
+    this.tryDrainConveyorWaits(sim, payload.conveyorId);
+    this.tryDrainBlockedEntities(sim, block.id);
+    this.tryDrainBlockedQueuesForReceiver(sim, block.id);
   }
 
   private handleTransportComplete(sim: DesSimulation<ProcessRuntimeState>, payload: TransportCompletePayload): void {
@@ -616,15 +721,21 @@ export class ProcessFlowRuntime {
   }
 
   private handleQueueBlock(sim: DesSimulation<ProcessRuntimeState>, block: Extract<ProcessFlowBlockDefinition, { kind: 'queue' }>, entity: ProcessEntity): void {
-    const stats = this.requireStats(block.id);
-    const transientLength = stats.entered - stats.completed;
-    if (block.capacity !== undefined && transientLength >= block.capacity) {
-      throw new Error(`Queue ${block.id} capacity ${block.capacity} exceeded`);
+    if (!this.queueCanAccept(block)) {
+      this.enqueueQueueGateWait(block.id, {
+        entityId: entity.id,
+        blockId: block.id,
+        queuedAtSec: sim.nowSec
+      });
+      return;
     }
 
-    stats.maxQueueLength = Math.max(stats.maxQueueLength, transientLength + 1);
-    this.incrementCompleted(block.id);
-    this.routeFromBlock(sim, block.id, entity);
+    this.enqueueQueueWait(block.id, {
+      entityId: entity.id,
+      blockId: block.id,
+      queuedAtSec: sim.nowSec
+    });
+    this.tryDrainQueue(sim, block.id);
   }
 
   private handleHoldBlock(
@@ -635,7 +746,16 @@ export class ProcessFlowRuntime {
     if (block.signalId) {
       const waits = this.holdWaitsBySignal.get(block.signalId) ?? [];
       if (block.queueCapacity !== undefined && waits.filter((wait) => wait.blockId === block.id).length >= block.queueCapacity) {
-        throw new Error(`Hold queue for block ${block.id} exceeded capacity ${block.queueCapacity}`);
+        const gateWaits = this.holdGateWaitsBySignal.get(block.signalId) ?? [];
+        gateWaits.push({
+          entityId: entity.id,
+          blockId: block.id,
+          signalId: block.signalId,
+          queuedAtSec: sim.nowSec
+        });
+        this.holdGateWaitsBySignal.set(block.signalId, gateWaits);
+        this.requireStats(block.id).blockedOutputCount += 1;
+        return;
       }
       waits.push({
         entityId: entity.id,
@@ -652,23 +772,35 @@ export class ProcessFlowRuntime {
       ? Math.max(0, block.untilSec - sim.nowSec)
       : this.sampleTime(block.durationSec ?? 0, `${block.id}.durationSec`);
     sim.scheduleIn(
-      ENTITY_ENTER_EVENT,
+      BLOCK_ROUTE_EVENT,
       delaySec,
-      { entityId: entity.id, blockId: this.requireNextConnection(block.id, entity).to },
+      { entityId: entity.id, blockId: block.id },
       { priority: 50 }
     );
     this.incrementCompleted(block.id);
   }
 
   private releaseSignalWaits(sim: DesSimulation<ProcessRuntimeState>, signalId: string): void {
-    const waits = this.holdWaitsBySignal.get(signalId) ?? [];
+    const waits = [
+      ...(this.holdWaitsBySignal.get(signalId) ?? []),
+      ...(this.holdGateWaitsBySignal.get(signalId) ?? [])
+    ];
     this.holdWaitsBySignal.delete(signalId);
+    this.holdGateWaitsBySignal.delete(signalId);
+    const releasedBlockIds = new Set<string>();
     for (const wait of waits) {
       const entity = this.requireEntity(wait.entityId);
       entity.attributes.lastReleasedSignalId = signalId;
       entity.attributes.lastSignalWaitSec = sim.nowSec - wait.queuedAtSec;
+      const stats = this.requireStats(wait.blockId);
+      stats.blockedOutputCount = Math.max(0, stats.blockedOutputCount - 1);
       this.incrementCompleted(wait.blockId);
+      releasedBlockIds.add(wait.blockId);
       this.routeFromBlock(sim, wait.blockId, entity);
+    }
+    for (const blockId of releasedBlockIds) {
+      this.tryDrainBlockedQueuesForReceiver(sim, blockId);
+      this.tryDrainBlockedEntities(sim, blockId);
     }
   }
 
@@ -713,12 +845,118 @@ export class ProcessFlowRuntime {
     entity.attributes.lastMaterialNodeId = block.nodeId;
     entity.attributes.lastMaterialItemId = itemId;
     sim.scheduleIn(
-      ENTITY_ENTER_EVENT,
+      BLOCK_ROUTE_EVENT,
       this.sampleTime(durationSec, `${block.id}.${mode === 'pickup' ? 'loadTimeSec' : 'unloadTimeSec'}`),
-      { entityId: entity.id, blockId: this.requireNextConnection(block.id, entity).to },
+      { entityId: entity.id, blockId: block.id },
       { priority: 50 }
     );
     this.incrementCompleted(block.id);
+  }
+
+  private handleStoreBlock(
+    sim: DesSimulation<ProcessRuntimeState>,
+    block: Extract<ProcessFlowBlockDefinition, { kind: 'store' }>,
+    entity: ProcessEntity
+  ): void {
+    const materialHandling = this.requireMaterialHandling(block.id);
+    const itemId = this.itemIdFor(entity, block.itemIdAttribute);
+    const sku = block.skuAttribute ? valueAsItemId(entity.attributes[block.skuAttribute], itemId) : null;
+    if (!materialHandling.canStore(block.storageId, itemId)) {
+      const waits = this.storageStoreWaitsByStorage.get(block.storageId) ?? [];
+      waits.push({ entityId: entity.id, blockId: block.id, storageId: block.storageId, itemId, sku, queuedAtSec: sim.nowSec });
+      this.storageStoreWaitsByStorage.set(block.storageId, waits);
+      this.updateBlockWaitStats(block.id, waits.length);
+      return;
+    }
+
+    this.completeStoreBlock(sim, block.id, block.storageId, entity, itemId, sku);
+  }
+
+  private completeStoreBlock(
+    sim: DesSimulation<ProcessRuntimeState>,
+    blockId: string,
+    storageId: string,
+    entity: ProcessEntity,
+    itemId: string,
+    sku: string | null
+  ): void {
+    this.requireMaterialHandling(blockId).store(storageId, itemId, { sku: sku ?? undefined, storedAtSec: sim.nowSec });
+    entity.attributes.storageId = storageId;
+    entity.attributes.storedItemId = itemId;
+    if (sku) {
+      entity.attributes.storedSku = sku;
+    }
+    this.incrementCompleted(blockId);
+    this.routeFromBlock(sim, blockId, entity);
+    this.tryDrainStorageRetrieveWaits(sim, storageId);
+  }
+
+  private handleRetrieveBlock(
+    sim: DesSimulation<ProcessRuntimeState>,
+    block: Extract<ProcessFlowBlockDefinition, { kind: 'retrieve' }>,
+    entity: ProcessEntity
+  ): void {
+    const materialHandling = this.requireMaterialHandling(block.id);
+    const policy = block.retrievePolicy ?? 'exactItem';
+    const query = policy === 'anyMatchingSku' && block.skuAttribute
+      ? valueAsItemId(entity.attributes[block.skuAttribute], entity.id)
+      : this.itemIdFor(entity, block.itemIdAttribute);
+    if (!materialHandling.canRetrieve(block.storageId, query, policy)) {
+      const waits = this.storageRetrieveWaitsByStorage.get(block.storageId) ?? [];
+      waits.push({ entityId: entity.id, blockId: block.id, storageId: block.storageId, query, policy, queuedAtSec: sim.nowSec });
+      this.storageRetrieveWaitsByStorage.set(block.storageId, waits);
+      this.updateBlockWaitStats(block.id, waits.length);
+      return;
+    }
+
+    this.completeRetrieveBlock(sim, block.id, block.storageId, entity, query, policy);
+  }
+
+  private completeRetrieveBlock(
+    sim: DesSimulation<ProcessRuntimeState>,
+    blockId: string,
+    storageId: string,
+    entity: ProcessEntity,
+    query: string,
+    policy: 'exactItem' | 'anyMatchingSku' | 'fifo' | 'nearest'
+  ): void {
+    const slot = this.requireMaterialHandling(blockId).retrieve(storageId, query, policy);
+    entity.attributes.storageId = null;
+    entity.attributes.retrievedItemId = slot.itemId ?? query;
+    this.incrementCompleted(blockId);
+    this.routeFromBlock(sim, blockId, entity);
+    this.tryDrainStorageStoreWaits(sim, storageId);
+  }
+
+  private handleConveyBlock(
+    sim: DesSimulation<ProcessRuntimeState>,
+    block: Extract<ProcessFlowBlockDefinition, { kind: 'convey' }>,
+    entity: ProcessEntity
+  ): void {
+    const materialHandling = this.requireMaterialHandling(block.id);
+    if (!materialHandling.canEnterConveyor(block.conveyorId)) {
+      const waits = this.conveyorWaitsByConveyor.get(block.conveyorId) ?? [];
+      waits.push({ entityId: entity.id, blockId: block.id, conveyorId: block.conveyorId, queuedAtSec: sim.nowSec });
+      this.conveyorWaitsByConveyor.set(block.conveyorId, waits);
+      this.updateBlockWaitStats(block.id, waits.length);
+      return;
+    }
+
+    this.enterConveyor(sim, block.id, block.conveyorId, entity);
+  }
+
+  private enterConveyor(sim: DesSimulation<ProcessRuntimeState>, blockId: string, conveyorId: string, entity: ProcessEntity): void {
+    const materialHandling = this.requireMaterialHandling(blockId);
+    const conveyor = materialHandling.getConveyor(conveyorId);
+    const entered = materialHandling.enterConveyor(conveyorId, entity.id, sim.nowSec);
+    entity.attributes.conveyorId = conveyorId;
+    entity.attributes.locationNodeId = conveyor.entryNodeId;
+    sim.scheduleAt(
+      CONVEYOR_EXIT_EVENT,
+      entered.exitAtSec,
+      { entityId: entity.id, blockId, conveyorId },
+      { priority: 50 }
+    );
   }
 
   private handleServiceComplete(sim: DesSimulation<ProcessRuntimeState>, payload: ServiceCompletePayload): void {
@@ -738,8 +976,12 @@ export class ProcessFlowRuntime {
   private enqueueResourceRequest(sim: DesSimulation<ProcessRuntimeState>, request: ResourceWaitRequest, queueCapacity?: number): void {
     const pool = this.requireResourcePool(request.resourcePoolId);
     const waitingForBlock = pool.waiting.filter((waiting) => waiting.blockId === request.blockId).length;
-    if (queueCapacity !== undefined && waitingForBlock >= queueCapacity) {
-      throw new Error(`Resource queue for block ${request.blockId} exceeded capacity ${queueCapacity}`);
+    if (queueCapacity !== undefined && waitingForBlock >= queueCapacity && request.quantity > pool.available) {
+      const gateWaits = this.resourceGateWaitsByBlock.get(request.blockId) ?? [];
+      gateWaits.push(request);
+      this.resourceGateWaitsByBlock.set(request.blockId, gateWaits);
+      this.requireStats(request.blockId).blockedOutputCount += 1;
+      return;
     }
 
     pool.waiting.push(request);
@@ -750,6 +992,7 @@ export class ProcessFlowRuntime {
 
   private tryStartWaitingRequests(sim: DesSimulation<ProcessRuntimeState>, pool: RuntimeResourcePoolMutableState): void {
     let index = 0;
+    const changedBlockIds = new Set<string>();
     while (index < pool.waiting.length) {
       const request = pool.waiting[index]!;
       if (request.quantity > pool.available) {
@@ -762,6 +1005,7 @@ export class ProcessFlowRuntime {
       pool.available -= request.quantity;
       pool.totalWaitTimeSec += sim.nowSec - request.queuedAtSec;
       pool.completedRequests += 1;
+      changedBlockIds.add(request.blockId);
 
       if (request.mode === 'service') {
         sim.scheduleIn(
@@ -781,6 +1025,12 @@ export class ProcessFlowRuntime {
         this.incrementCompleted(request.blockId);
         this.routeFromBlock(sim, request.blockId, entity);
       }
+    }
+
+    for (const blockId of changedBlockIds) {
+      this.tryDrainResourceGateForBlock(sim, blockId);
+      this.tryDrainBlockedQueuesForReceiver(sim, blockId);
+      this.tryDrainBlockedEntities(sim, blockId);
     }
   }
 
@@ -844,20 +1094,29 @@ export class ProcessFlowRuntime {
     unit: TransporterUnitState
   ): void {
     const materialHandling = this.requireMaterialHandling(request.blockId);
-    const emptyRoute = materialHandling.reserveRoute(unit.currentNodeId, request.fromNodeId, request.fleetId, sim.nowSec);
-    const loadedReadyAtSec = emptyRoute.travelEndSec + request.loadTimeSec;
-    const loadedRoute = materialHandling.reserveRoute(request.fromNodeId, request.toNodeId, request.fleetId, loadedReadyAtSec);
+    const plan: MaterialTransportTaskPlan = materialHandling.planTransportTask({
+      unit,
+      fleetId: request.fleetId,
+      entityId: request.entityId,
+      fromNodeId: request.fromNodeId,
+      toNodeId: request.toNodeId,
+      loadTimeSec: request.loadTimeSec,
+      unloadTimeSec: request.unloadTimeSec,
+      requestedStartSec: sim.nowSec
+    });
+    const emptyRoute = plan.emptyRoute;
+    const loadedRoute = plan.loadedRoute;
     const routeDistanceM = emptyRoute.distanceM + loadedRoute.distanceM;
     const routeTravelTimeSec = emptyRoute.travelTimeSec + loadedRoute.travelTimeSec;
-    const routeTrafficWaitSec = emptyRoute.trafficWaitSec + loadedRoute.trafficWaitSec;
-    const busyDurationSec = loadedRoute.travelEndSec + request.unloadTimeSec - sim.nowSec;
+    const routeTrafficWaitSec = plan.trafficWaitSec;
+    const busyDurationSec = plan.completionSec - sim.nowSec;
     this.activeTransports.set(unit.id, {
       transporterUnitId: unit.id,
       fleetId: request.fleetId,
       entityId: request.entityId,
       blockId: request.blockId,
       startSec: sim.nowSec,
-      endSec: loadedRoute.travelEndSec + request.unloadTimeSec,
+      endSec: plan.completionSec,
       requestQueuedAtSec: request.queuedAtSec,
       dispatchWaitSec: sim.nowSec - request.queuedAtSec,
       emptyFromNodeId: unit.currentNodeId,
@@ -867,7 +1126,7 @@ export class ProcessFlowRuntime {
       emptyTravelEndSec: emptyRoute.travelEndSec,
       emptyTrafficWaitSec: emptyRoute.trafficWaitSec,
       loadStartSec: emptyRoute.travelEndSec,
-      loadEndSec: loadedReadyAtSec,
+      loadEndSec: plan.loadEndSec,
       loadedFromNodeId: request.fromNodeId,
       loadedToNodeId: request.toNodeId,
       loadedRouteNodeIds: loadedRoute.nodeIds,
@@ -875,7 +1134,7 @@ export class ProcessFlowRuntime {
       loadedTravelEndSec: loadedRoute.travelEndSec,
       loadedTrafficWaitSec: loadedRoute.trafficWaitSec,
       unloadStartSec: loadedRoute.travelEndSec,
-      unloadEndSec: loadedRoute.travelEndSec + request.unloadTimeSec,
+      unloadEndSec: plan.unloadEndSec,
       trafficWaitSec: routeTrafficWaitSec
     });
     const entity = this.requireEntity(request.entityId);
@@ -916,12 +1175,368 @@ export class ProcessFlowRuntime {
 
   private routeFromBlock(sim: DesSimulation<ProcessRuntimeState>, blockId: string, entity: ProcessEntity): void {
     const next = this.requireNextConnection(blockId, entity);
-    sim.scheduleAt(
-      ENTITY_ENTER_EVENT,
-      sim.nowSec,
-      { entityId: entity.id, blockId: next.to },
-      { priority: 60 }
-    );
+    this.tryRouteEntity(sim, entity, blockId, next.to);
+  }
+
+  private tryRouteEntity(
+    sim: DesSimulation<ProcessRuntimeState>,
+    entity: ProcessEntity,
+    fromBlockId: string,
+    toBlockId: string
+  ): boolean {
+    const admission = this.checkAdmission(toBlockId);
+    if (admission.status === 'accepted') {
+      this.reservePendingAdmission(toBlockId);
+      sim.scheduleAt(
+        ENTITY_ENTER_EVENT,
+        sim.nowSec,
+        { entityId: entity.id, blockId: toBlockId },
+        { priority: 60 }
+      );
+      return true;
+    }
+
+    if (admission.status === 'blocked') {
+      this.blockOutputForReceiver({
+        entityId: entity.id,
+        fromBlockId,
+        toBlockId,
+        queuedAtSec: sim.nowSec,
+        reason: admission.reason
+      });
+      return false;
+    }
+
+    const stats = this.requireStats(fromBlockId);
+    stats.rejectedCount += 1;
+    return false;
+  }
+
+  private checkAdmission(blockId: string): AdmissionResult {
+    const block = this.requireBlock(blockId);
+    switch (block.kind) {
+      case 'queue':
+        return this.queueCanAccept(block)
+          ? { status: 'accepted' }
+          : { status: 'blocked', reason: 'queue-full', receiverBlockId: block.id };
+      case 'service':
+      case 'seize':
+        return this.resourceBlockCanAccept(block)
+          ? { status: 'accepted' }
+          : { status: 'blocked', reason: 'resource-queue-full', receiverBlockId: block.id };
+      case 'hold':
+        return this.holdBlockCanAccept(block)
+          ? { status: 'accepted' }
+          : { status: 'blocked', reason: 'hold-queue-full', receiverBlockId: block.id };
+      case 'convey': {
+        const materialHandling = this.requireMaterialHandling(block.id);
+        const conveyor = materialHandling.getConveyor(block.conveyorId);
+        const conveyorState = materialHandling.getSnapshot().conveyorStates.find((state) => state.conveyorId === block.conveyorId);
+        const pending = this.pendingAdmissionsByBlock.get(block.id) ?? 0;
+        return materialHandling.canEnterConveyor(block.conveyorId) && (conveyorState?.wip.length ?? 0) + pending < (conveyor.capacity ?? 1)
+          ? { status: 'accepted' }
+          : { status: 'blocked', reason: 'conveyor-full', receiverBlockId: block.id };
+      }
+      default:
+        return { status: 'accepted' };
+    }
+  }
+
+  private queueCanAccept(block: Extract<ProcessFlowBlockDefinition, { kind: 'queue' }>): boolean {
+    const queue = this.queueWaits.get(block.id) ?? [];
+    const pending = this.pendingAdmissionsByBlock.get(block.id) ?? 0;
+    return block.capacity === undefined || queue.length + pending < block.capacity;
+  }
+
+  private resourceBlockCanAccept(block: Extract<ProcessFlowBlockDefinition, { kind: 'service' | 'seize' }>): boolean {
+    if (block.queueCapacity === undefined) {
+      return true;
+    }
+
+    const pool = this.requireResourcePool(block.resourcePoolId);
+    const waitingForBlock = pool.waiting.filter((waiting) => waiting.blockId === block.id).length;
+    const pending = this.pendingAdmissionsByBlock.get(block.id) ?? 0;
+    const immediateSlots = Math.floor(pool.available / block.quantity);
+    const waitingSlots = Math.max(0, block.queueCapacity - waitingForBlock);
+    return pending < immediateSlots + waitingSlots;
+  }
+
+  private holdBlockCanAccept(block: Extract<ProcessFlowBlockDefinition, { kind: 'hold' }>): boolean {
+    if (!block.signalId || block.queueCapacity === undefined) {
+      return true;
+    }
+
+    const waits = this.holdWaitsBySignal.get(block.signalId) ?? [];
+    const pending = this.pendingAdmissionsByBlock.get(block.id) ?? 0;
+    return waits.filter((wait) => wait.blockId === block.id).length + pending < block.queueCapacity;
+  }
+
+  private reservePendingAdmission(blockId: string): void {
+    this.pendingAdmissionsByBlock.set(blockId, (this.pendingAdmissionsByBlock.get(blockId) ?? 0) + 1);
+  }
+
+  private releasePendingAdmission(blockId: string): void {
+    const pending = this.pendingAdmissionsByBlock.get(blockId) ?? 0;
+    if (pending <= 1) {
+      this.pendingAdmissionsByBlock.delete(blockId);
+    } else {
+      this.pendingAdmissionsByBlock.set(blockId, pending - 1);
+    }
+  }
+
+  private blockOutputForReceiver(route: BlockedEntityRoute): void {
+    const existing = this.blockedOutputsByReceiver.get(route.toBlockId) ?? [];
+    if (existing.some((candidate) => candidate.entityId === route.entityId && candidate.fromBlockId === route.fromBlockId)) {
+      return;
+    }
+
+    existing.push(route);
+    this.blockedOutputsByReceiver.set(route.toBlockId, existing);
+    this.requireStats(route.fromBlockId).blockedOutputCount += 1;
+  }
+
+  private tryDrainBlockedEntities(sim: DesSimulation<ProcessRuntimeState>, receiverBlockId: string): void {
+    const blocked = this.blockedOutputsByReceiver.get(receiverBlockId) ?? [];
+    if (blocked.length === 0) {
+      return;
+    }
+
+    const remaining: BlockedEntityRoute[] = [];
+    for (const route of blocked) {
+      const admission = this.checkAdmission(route.toBlockId);
+      if (admission.status !== 'accepted') {
+        remaining.push(route);
+        continue;
+      }
+
+      const stats = this.requireStats(route.fromBlockId);
+      stats.blockedOutputCount = Math.max(0, stats.blockedOutputCount - 1);
+      const entity = this.requireEntity(route.entityId);
+      entity.attributes.lastBlockedReason = route.reason;
+      entity.attributes.lastBlockedWaitSec = sim.nowSec - route.queuedAtSec;
+      this.reservePendingAdmission(route.toBlockId);
+      sim.scheduleAt(
+        ENTITY_ENTER_EVENT,
+        sim.nowSec,
+        { entityId: route.entityId, blockId: route.toBlockId },
+        { priority: 60 }
+      );
+    }
+
+    if (remaining.length === 0) {
+      this.blockedOutputsByReceiver.delete(receiverBlockId);
+    } else {
+      this.blockedOutputsByReceiver.set(receiverBlockId, remaining);
+    }
+  }
+
+  private rememberBlockedQueue(receiverBlockId: string, queueBlockId: string): void {
+    const queueIds = this.blockedQueuesByReceiver.get(receiverBlockId) ?? new Set<string>();
+    queueIds.add(queueBlockId);
+    this.blockedQueuesByReceiver.set(receiverBlockId, queueIds);
+  }
+
+  private tryDrainBlockedQueuesForReceiver(sim: DesSimulation<ProcessRuntimeState>, receiverBlockId: string): void {
+    const queueIds = this.blockedQueuesByReceiver.get(receiverBlockId);
+    if (!queueIds || queueIds.size === 0) {
+      return;
+    }
+
+    this.blockedQueuesByReceiver.delete(receiverBlockId);
+    for (const queueBlockId of [...queueIds].sort()) {
+      this.tryDrainQueue(sim, queueBlockId);
+    }
+  }
+
+  private enqueueQueueWait(blockId: string, entry: QueueWaitEntry): void {
+    const waits = this.queueWaits.get(blockId) ?? [];
+    waits.push(entry);
+    this.queueWaits.set(blockId, waits);
+    this.updateBlockWaitStats(blockId, waits.length);
+  }
+
+  private enqueueQueueGateWait(blockId: string, entry: QueueWaitEntry): void {
+    const waits = this.queueGateWaits.get(blockId) ?? [];
+    waits.push(entry);
+    this.queueGateWaits.set(blockId, waits);
+    this.requireStats(blockId).blockedOutputCount += 1;
+  }
+
+  private tryDrainQueue(sim: DesSimulation<ProcessRuntimeState>, blockId: string): void {
+    if (this.drainingQueueIds.has(blockId)) {
+      return;
+    }
+
+    const block = this.requireBlock(blockId);
+    if (block.kind !== 'queue') {
+      throw new Error(`Block ${blockId} is not a queue`);
+    }
+
+    this.drainingQueueIds.add(blockId);
+    try {
+      this.admitQueueGateEntries(block);
+      const queue = this.queueWaits.get(blockId) ?? [];
+      while (queue.length > 0) {
+        const entry = queue[0]!;
+        const entity = this.requireEntity(entry.entityId);
+        const next = this.requireNextConnection(blockId, entity);
+        const admission = this.checkAdmission(next.to);
+        if (admission.status !== 'accepted') {
+          this.rememberBlockedQueue(next.to, blockId);
+          break;
+        }
+
+        queue.shift();
+        this.recordBlockWaitCompletion(blockId, sim.nowSec - entry.queuedAtSec);
+        this.incrementCompleted(blockId);
+        this.updateBlockWaitStats(blockId, queue.length);
+        this.reservePendingAdmission(next.to);
+        sim.scheduleAt(
+          ENTITY_ENTER_EVENT,
+          sim.nowSec,
+          { entityId: entity.id, blockId: next.to },
+          { priority: 60 }
+        );
+        this.tryDrainBlockedEntities(sim, blockId);
+        this.tryDrainBlockedQueuesForReceiver(sim, blockId);
+        this.admitQueueGateEntries(block);
+      }
+
+      if (queue.length === 0) {
+        this.queueWaits.delete(blockId);
+      } else {
+        this.queueWaits.set(blockId, queue);
+      }
+      this.updateBlockWaitStats(blockId, queue.length);
+    } finally {
+      this.drainingQueueIds.delete(blockId);
+    }
+  }
+
+  private admitQueueGateEntries(block: Extract<ProcessFlowBlockDefinition, { kind: 'queue' }>): void {
+    const gate = this.queueGateWaits.get(block.id) ?? [];
+    while (gate.length > 0 && this.queueCanAccept(block)) {
+      const entry = gate.shift()!;
+      const stats = this.requireStats(block.id);
+      stats.blockedOutputCount = Math.max(0, stats.blockedOutputCount - 1);
+      this.enqueueQueueWait(block.id, entry);
+    }
+
+    if (gate.length === 0) {
+      this.queueGateWaits.delete(block.id);
+    } else {
+      this.queueGateWaits.set(block.id, gate);
+    }
+  }
+
+  private updateBlockWaitStats(blockId: string, currentQueueLength: number): void {
+    const stats = this.requireStats(blockId);
+    stats.currentQueueLength = currentQueueLength;
+    stats.maxQueueLength = Math.max(stats.maxQueueLength, currentQueueLength);
+  }
+
+  private recordBlockWaitCompletion(blockId: string, waitSec: number): void {
+    const stats = this.requireStats(blockId);
+    stats.totalWaitTimeSec += waitSec;
+    stats.completedWaits += 1;
+    stats.averageWaitTimeSec = stats.totalWaitTimeSec / stats.completedWaits;
+  }
+
+  private tryDrainResourceGateForBlock(sim: DesSimulation<ProcessRuntimeState>, blockId: string): void {
+    const block = this.requireBlock(blockId);
+    if (block.kind !== 'service' && block.kind !== 'seize') {
+      return;
+    }
+
+    const waits = this.resourceGateWaitsByBlock.get(blockId) ?? [];
+    if (waits.length === 0) {
+      return;
+    }
+
+    while (waits.length > 0 && this.resourceBlockCanAccept(block)) {
+      const request = waits.shift()!;
+      const stats = this.requireStats(blockId);
+      stats.blockedOutputCount = Math.max(0, stats.blockedOutputCount - 1);
+      this.enqueueResourceRequest(sim, request, block.queueCapacity);
+    }
+
+    if (waits.length === 0) {
+      this.resourceGateWaitsByBlock.delete(blockId);
+    } else {
+      this.resourceGateWaitsByBlock.set(blockId, waits);
+    }
+  }
+
+  private tryDrainStorageStoreWaits(sim: DesSimulation<ProcessRuntimeState>, storageId: string): void {
+    const waits = this.storageStoreWaitsByStorage.get(storageId) ?? [];
+    if (waits.length === 0) {
+      return;
+    }
+
+    while (waits.length > 0) {
+      const wait = waits[0]!;
+      if (!this.requireMaterialHandling(wait.blockId).canStore(wait.storageId, wait.itemId)) {
+        break;
+      }
+
+      waits.shift();
+      this.recordBlockWaitCompletion(wait.blockId, sim.nowSec - wait.queuedAtSec);
+      this.updateBlockWaitStats(wait.blockId, waits.length);
+      this.completeStoreBlock(sim, wait.blockId, wait.storageId, this.requireEntity(wait.entityId), wait.itemId, wait.sku);
+    }
+
+    if (waits.length === 0) {
+      this.storageStoreWaitsByStorage.delete(storageId);
+    } else {
+      this.storageStoreWaitsByStorage.set(storageId, waits);
+    }
+  }
+
+  private tryDrainStorageRetrieveWaits(sim: DesSimulation<ProcessRuntimeState>, storageId: string): void {
+    const waits = this.storageRetrieveWaitsByStorage.get(storageId) ?? [];
+    if (waits.length === 0) {
+      return;
+    }
+
+    let index = 0;
+    while (index < waits.length) {
+      const wait = waits[index]!;
+      if (!this.requireMaterialHandling(wait.blockId).canRetrieve(wait.storageId, wait.query, wait.policy)) {
+        index += 1;
+        continue;
+      }
+
+      waits.splice(index, 1);
+      this.recordBlockWaitCompletion(wait.blockId, sim.nowSec - wait.queuedAtSec);
+      this.updateBlockWaitStats(wait.blockId, waits.length);
+      this.completeRetrieveBlock(sim, wait.blockId, wait.storageId, this.requireEntity(wait.entityId), wait.query, wait.policy);
+    }
+
+    if (waits.length === 0) {
+      this.storageRetrieveWaitsByStorage.delete(storageId);
+    } else {
+      this.storageRetrieveWaitsByStorage.set(storageId, waits);
+    }
+  }
+
+  private tryDrainConveyorWaits(sim: DesSimulation<ProcessRuntimeState>, conveyorId: string): void {
+    const waits = this.conveyorWaitsByConveyor.get(conveyorId) ?? [];
+    if (waits.length === 0) {
+      return;
+    }
+
+    while (waits.length > 0 && this.requireMaterialHandling(waits[0]!.blockId).canEnterConveyor(conveyorId)) {
+      const wait = waits.shift()!;
+      this.recordBlockWaitCompletion(wait.blockId, sim.nowSec - wait.queuedAtSec);
+      this.updateBlockWaitStats(wait.blockId, waits.length);
+      this.enterConveyor(sim, wait.blockId, conveyorId, this.requireEntity(wait.entityId));
+    }
+
+    if (waits.length === 0) {
+      this.conveyorWaitsByConveyor.delete(conveyorId);
+    } else {
+      this.conveyorWaitsByConveyor.set(conveyorId, waits);
+    }
   }
 
   private requireNextConnection(blockId: string, entity: ProcessEntity): ProcessConnectionDefinition {
