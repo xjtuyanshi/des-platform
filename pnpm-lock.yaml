@@ -50,6 +50,9 @@ importers:
       '@des-platform/model-compiler':
         specifier: workspace:*
         version: link:../../packages/model-compiler
+      '@des-platform/model-repair':
+        specifier: workspace:*
+        version: link:../../packages/model-repair
       '@des-platform/motion-layer':
         specifier: workspace:*
         version: link:../../packages/motion-layer
@@ -156,6 +159,15 @@ importers:
       '@des-platform/process-flow':
         specifier: workspace:*
         version: link:../process-flow
+      '@des-platform/shared-schema':
+        specifier: workspace:*
+        version: link:../shared-schema
+
+  packages/model-repair:
+    dependencies:
+      '@des-platform/model-compiler':
+        specifier: workspace:*
+        version: link:../model-compiler
       '@des-platform/shared-schema':
         specifier: workspace:*
         version: link:../shared-schema

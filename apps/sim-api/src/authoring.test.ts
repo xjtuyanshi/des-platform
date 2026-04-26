@@ -1,4 +1,4 @@
-import { diagnoseDesStudy, draftDesStudy, repairDesStudy } from './authoring.js';
+import { applyDesStudyRepairs, diagnoseDesStudy, draftDesStudy, planDesStudyRepairs, repairDesStudy } from './authoring.js';
 
 describe('DES authoring API helpers', () => {
   it('drafts a runnable inline study from a brief without an LLM key', async () => {
@@ -53,5 +53,42 @@ describe('DES authoring API helpers', () => {
     expect(repaired.repaired).toBe(true);
     expect(repaired.valid).toBe(true);
     expect(repaired.study?.runs[0]?.experimentId).toBe('baseline');
+  });
+
+  it('plans and applies selected repair candidates with audit trail', () => {
+    const study = {
+      schemaVersion: 'des-platform.study.v1',
+      id: 'authoring-repair-loop',
+      name: 'Authoring Repair Loop',
+      model: {
+        schemaVersion: 'des-platform.v1',
+        id: 'authoring-repair-loop-model',
+        name: 'Authoring Repair Loop Model',
+        process: {
+          id: 'flow',
+          blocks: [
+            { id: 'source', kind: 'source', scheduleAtSec: [0] },
+            { id: 'queue', kind: 'queue' },
+            { id: 'sink', kind: 'sink' }
+          ],
+          connections: [{ from: 'source', to: 'queue' }]
+        },
+        experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+      },
+      runs: [{ experimentId: 'baseline' }]
+    };
+
+    const plan = planDesStudyRepairs(study);
+    const deadEnd = plan.repairOptions.find((option) => option.diagnostic.code === 'process.dead-end');
+    expect(deadEnd?.candidate.requiresUserConfirmation).toBe(true);
+
+    const repaired = applyDesStudyRepairs({ study, candidateIds: [deadEnd!.id] });
+    expect(repaired.valid).toBe(true);
+    expect(repaired.repairAuditTrail).toHaveLength(1);
+    expect(repaired.repairAuditTrail[0]).toMatchObject({
+      diagnosticCode: 'process.dead-end',
+      userDecision: 'accepted'
+    });
+    expect(repaired.repairValidation?.validAfter).toBe(true);
   });
 });

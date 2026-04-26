@@ -27,6 +27,7 @@
       "@des-platform/process-flow": ["packages/process-flow/src/index.ts"],
       "@des-platform/material-handling": ["packages/material-handling/src/index.ts"],
       "@des-platform/model-compiler": ["packages/model-compiler/src/index.ts"],
+      "@des-platform/model-repair": ["packages/model-repair/src/index.ts"],
       "@des-platform/domain-model": ["packages/domain-model/src/index.ts"],
       "@des-platform/dispatching": ["packages/dispatching/src/index.ts"],
       "@des-platform/motion-layer": ["packages/motion-layer/src/index.ts"],

@@ -230,7 +230,7 @@ function renderRunSections(result: GenericDesRunResult): string {
         <h2>Transporter Fleets</h2>
         <table>
           <thead><tr><th>Fleet</th><th>Requests</th><th>Completed</th><th>Utilization</th><th>Avg Wait</th><th>Traffic Wait</th><th>Path Wait</th><th>Node Wait</th><th>Total Distance</th><th>Empty</th><th>Loaded</th></tr></thead>
-          <tbody>${transporterRows || '<tr><td colspan="9">No transporter fleet activity.</td></tr>'}</tbody>
+          <tbody>${transporterRows || '<tr><td colspan="11">No transporter fleet activity.</td></tr>'}</tbody>
         </table>
       </article>
     </section>

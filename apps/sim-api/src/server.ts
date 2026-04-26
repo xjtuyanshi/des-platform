@@ -31,7 +31,7 @@ import {
   subscribeGenericRuntime,
   updateGenericRuntimeSpeed
 } from './generic-runtime.js';
-import { diagnoseDesStudy, draftDesStudy, repairDesStudy } from './authoring.js';
+import { applyDesStudyRepairs, diagnoseDesStudy, draftDesStudy, planDesStudyRepairs, repairDesStudy } from './authoring.js';
 
 const port = Number(process.env.PORT ?? 8787);
 
@@ -97,9 +97,25 @@ app.post('/api/des-author/diagnose', async (request: Request, response: Response
   }
 });
 
+app.post('/api/des-author/repair-plan', async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.json(planDesStudyRepairs(request.body?.study ?? request.body));
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/des-author/repair', async (request: Request, response: Response, next: NextFunction) => {
   try {
     response.json(repairDesStudy(request.body ?? {}));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/des-author/apply-repair', async (request: Request, response: Response, next: NextFunction) => {
+  try {
+    response.json(applyDesStudyRepairs(request.body ?? {}));
   } catch (error) {
     next(error);
   }

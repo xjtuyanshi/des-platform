@@ -20,6 +20,7 @@ The platform is being rebuilt around generic simulation primitives:
 - `packages/process-flow`: AI-native Process Flow runtime blocks such as Source, Queue, Delay, Service, Seize, Release, SelectOutput, and Sink
 - `packages/material-handling`: generic Material Handling runtime for layout networks, transporter fleets, storage, and conveyors
 - `packages/model-compiler`: validates AI-native model DSL and creates executable Process Flow runtimes
+- `packages/model-repair`: repair planning, JSON Patch application, re-diagnosis, and repair audit trail helpers
 - `packages/domain-model`: stations, bins, AMRs, cars, skids, transport tasks
 - `packages/dispatching`: earliest-completion / nearest-idle dispatch policy
 - `packages/motion-layer`: aisle graph routing + Rapier-backed motion world
@@ -92,6 +93,7 @@ It is intentionally code/data based instead of drag-and-drop based:
 - Time fields can be deterministic numbers or seeded distributions such as `constant`, `uniform`, `triangular`, `normal`, and `exponential`.
 - Model parameters give stable names, semantic paths, units, and min/max/step bounds for UI sliders and AI-authored experiment overrides.
 - `@des-platform/model-compiler` validates the DSL before runtime.
+- `@des-platform/model-repair` turns repairable diagnostics into selected JSON Patch applications, re-runs diagnostics, and returns an audit trail.
 - `@des-platform/process-flow` executes the model on `@des-platform/des-core`.
 - `@des-platform/material-handling` provides the first generic material-flow runtime layer for `MoveByTransporter`, `Store`, `Retrieve`, and `Convey` blocks.
 - Transporter moves include empty travel from the vehicle's current node to the pickup node plus loaded travel to the destination node.
@@ -120,7 +122,7 @@ pnpm mvp:generic
 pnpm mvp:inline
 ```
 
-Validation writes `output/<model-file>-diagnostics.json` with schema, process graph, material route, and experiment diagnostics. This is the first guardrail for AI-authored models: an agent can generate a model, validate it, repair specific diagnostic codes, and only then run the simulation.
+Validation writes `output/<model-file>-diagnostics.json` with schema, process graph, material route, and experiment diagnostics. This is the first guardrail for AI-authored models: an agent can generate a model, validate it, repair specific diagnostic codes, and only then run the simulation. Repair candidates are split between safe auto-apply patches and proposals that require explicit confirmation, with patch-safe JSON Pointers and audit entries for each applied change.
 
 The runner writes serializable results to `output/<model-id>-<experiment-id>-run.json` with event logs, process snapshots, material-handling state, and summary KPIs.
 Experiment runs write `output/<model-id>-<experiment-id>-experiment.json` with per-replication seeds, KPI summaries, standard deviations, and 95% confidence half-widths.
@@ -159,6 +161,14 @@ pnpm dev:api
 ```
 
 Then open `http://localhost:8787/api/des-runtime/micro-fulfillment-inline/viewer`. This is a live runtime session: the server advances the DES clock, WebSocket pushes current snapshots, and the browser draws the current material-handling state including active AMR transports.
+
+The Workbench is available at `http://localhost:8787/api/des-workbench`. Its authoring APIs are:
+
+- `POST /api/des-author/draft`: draft an inline study from a natural-language brief.
+- `POST /api/des-author/diagnose`: return schema/model diagnostics and repair options.
+- `POST /api/des-author/repair-plan`: return the formal repair plan without changing the model.
+- `POST /api/des-author/apply-repair`: apply selected repair candidates, re-diagnose, and return audit entries.
+- `POST /api/des-author/repair`: apply safe auto repairs by default for quick cleanup.
 
 The AI-native library catalog is [des-library-catalog.json](/Users/luke/codex%20projects/DES%20Sim/des-platform/config/catalog/des-library-catalog.json). It documents the available Process Flow blocks, Material Handling primitives, experiment controls, parameters, constraints, and examples in a structure an agent can use directly.
 

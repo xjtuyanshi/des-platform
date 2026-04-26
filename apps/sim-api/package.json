@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@des-platform/model-compiler": "workspace:*",
+    "@des-platform/model-repair": "workspace:*",
     "@des-platform/motion-layer": "workspace:*",
     "@des-platform/process-flow": "workspace:*",
     "@des-platform/shared-schema": "workspace:*",

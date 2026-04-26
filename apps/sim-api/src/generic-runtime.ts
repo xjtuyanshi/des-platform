@@ -1132,6 +1132,31 @@ export function renderGenericWorkbench(): string {
         font-size: 12px;
         padding: 3px 7px;
       }
+      .repair-candidate {
+        margin-top: 7px;
+        padding-top: 7px;
+        border-top: 1px solid var(--line);
+        display: grid;
+        gap: 6px;
+      }
+      .repair-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        font-size: 11px;
+      }
+      .repair-meta span {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 7px;
+        background: #f8fafc;
+      }
+      .patch-diff {
+        min-height: 0;
+        max-height: 170px;
+        border-radius: 6px;
+        font-size: 11px;
+      }
       textarea {
         width: 100%;
         min-height: 660px;
@@ -1183,6 +1208,7 @@ export function renderGenericWorkbench(): string {
             <div class="toolbar">
               <button class="primary" id="draft">Draft From Brief</button>
               <button id="diagnose">Diagnose</button>
+              <button id="repairPlan">Repair Plan</button>
               <button id="repair">Repair Draft</button>
             </div>
           </div>
@@ -1219,6 +1245,8 @@ export function renderGenericWorkbench(): string {
       const $ = (id) => document.getElementById(id);
       let lastViewerUrl = null;
       let lastDiagnostics = [];
+      let lastRepairOptions = [];
+      let lastRepairAuditTrail = [];
       let activeTab = 'summary';
 
       function viewerUrlFor(studyId) {
@@ -1286,19 +1314,23 @@ export function renderGenericWorkbench(): string {
             if (lastDiagnostics.length === 0) {
               list.textContent = 'No diagnostics.';
             }
-            for (const diagnostic of lastDiagnostics) {
+            for (const [index, diagnostic] of lastDiagnostics.entries()) {
               const item = document.createElement('div');
               item.className = 'diagnostic';
               const title = document.createElement('strong');
               title.textContent = diagnostic.severity + ' / ' + diagnostic.code;
               const body = document.createElement('small');
-              body.textContent = diagnostic.path + ' - ' + diagnostic.message;
+              body.textContent = (diagnostic.humanPath || diagnostic.path || diagnostic.jsonPointer || '$') + ' - ' + diagnostic.message;
               const jump = document.createElement('button');
               jump.textContent = 'Locate';
-              jump.addEventListener('click', () => locatePath(diagnostic.path));
+              jump.addEventListener('click', () => locatePath(diagnostic.path || diagnostic.jsonPointer));
               item.appendChild(title);
               item.appendChild(body);
               item.appendChild(jump);
+              const repairOption = repairOptionFor(index, diagnostic);
+              if (repairOption) {
+                item.appendChild(renderRepairCandidate(repairOption));
+              }
               list.appendChild(item);
             }
             box.appendChild(list);
@@ -1308,6 +1340,51 @@ export function renderGenericWorkbench(): string {
         } catch (error) {
           $('tabView').textContent = error instanceof Error ? error.message : String(error);
         }
+      }
+
+      function repairOptionFor(index, diagnostic) {
+        return lastRepairOptions.find((option) => option.diagnostic?.code === diagnostic.code && option.diagnostic?.jsonPointer === diagnostic.jsonPointer)
+          || lastRepairOptions.find((option) => option.diagnosticIndex === index)
+          || null;
+      }
+
+      function renderRepairCandidate(option) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'repair-candidate';
+        const candidate = option.candidate || option.diagnostic?.repairCandidate;
+        const meta = document.createElement('div');
+        meta.className = 'repair-meta';
+        for (const value of [
+          candidate?.safety || 'unknown',
+          candidate?.kind || 'patch',
+          candidate?.requiresUserConfirmation ? 'needs approval' : 'safe auto'
+        ]) {
+          const pill = document.createElement('span');
+          pill.textContent = value;
+          meta.appendChild(pill);
+        }
+        const explanation = document.createElement('small');
+        explanation.textContent = candidate?.explanation || 'No repair explanation.';
+        const patch = document.createElement('pre');
+        patch.className = 'patch-diff';
+        patch.textContent = formatPatch(candidate?.patch || []);
+        const apply = document.createElement('button');
+        apply.textContent = candidate?.requiresUserConfirmation ? 'Apply Proposal' : 'Apply Safe Patch';
+        apply.addEventListener('click', () => applyRepairOption(option.id));
+        wrapper.appendChild(meta);
+        wrapper.appendChild(explanation);
+        wrapper.appendChild(patch);
+        wrapper.appendChild(apply);
+        return wrapper;
+      }
+
+      function formatPatch(patch) {
+        if (!patch.length) return 'No patch operations.';
+        return patch.map((operation) => {
+          const marker = operation.op === 'add' ? '+' : operation.op === 'remove' ? '-' : '~';
+          const value = operation.op === 'remove' ? '' : ' ' + JSON.stringify(operation.value);
+          return marker + ' ' + operation.op + ' ' + operation.path + value;
+        }).join('\\n');
       }
 
       function locatePath(path) {
@@ -1363,9 +1440,11 @@ export function renderGenericWorkbench(): string {
           const data = await postJson('/api/des-author/draft', { brief: $('briefText').value, provider: 'auto' });
           if (data.study) setCase(data.study);
           lastDiagnostics = data.diagnostics ?? [];
+          lastRepairOptions = data.repairOptions ?? [];
+          lastRepairAuditTrail = data.repairAuditTrail ?? [];
           activeTab = data.valid ? 'summary' : 'diagnostics';
           renderTabs();
-          setResult({ provider: data.provider, valid: data.valid, notes: data.notes, diagnostics: lastDiagnostics.length });
+          setResult({ provider: data.provider, valid: data.valid, notes: data.notes, diagnostics: lastDiagnostics.length, repairOptions: lastRepairOptions.length });
         } catch (error) {
           setResult(error instanceof Error ? error.message : String(error), true);
         }
@@ -1374,9 +1453,28 @@ export function renderGenericWorkbench(): string {
         try {
           const data = await postJson('/api/des-author/diagnose', { study: currentCase() });
           lastDiagnostics = data.diagnostics ?? [];
+          lastRepairOptions = data.repairOptions ?? [];
           activeTab = 'diagnostics';
           renderTabs();
-          setResult({ valid: data.valid, schemaValid: data.schemaValid, modelValid: data.modelValid, diagnostics: lastDiagnostics.length });
+          setResult({ valid: data.valid, schemaValid: data.schemaValid, modelValid: data.modelValid, diagnostics: lastDiagnostics.length, repairOptions: lastRepairOptions.length });
+        } catch (error) {
+          setResult(error instanceof Error ? error.message : String(error), true);
+        }
+      });
+      $('repairPlan').addEventListener('click', async () => {
+        try {
+          const data = await postJson('/api/des-author/repair-plan', { study: currentCase() });
+          lastDiagnostics = data.diagnostics ?? [];
+          lastRepairOptions = data.repairOptions ?? data.repairPlan?.options ?? [];
+          activeTab = 'diagnostics';
+          renderTabs();
+          setResult({
+            valid: data.valid,
+            diagnostics: lastDiagnostics.length,
+            repairOptions: lastRepairOptions.length,
+            safeAutoApply: data.repairPlan?.safeAutoApplyCount ?? 0,
+            requiresConfirmation: data.repairPlan?.requiresConfirmationCount ?? 0
+          });
         } catch (error) {
           setResult(error instanceof Error ? error.message : String(error), true);
         }
@@ -1386,13 +1484,29 @@ export function renderGenericWorkbench(): string {
           const data = await postJson('/api/des-author/repair', { study: currentCase(), brief: $('briefText').value });
           if (data.study) setCase(data.study);
           lastDiagnostics = data.diagnostics ?? [];
+          lastRepairOptions = data.repairOptions ?? [];
+          lastRepairAuditTrail = data.repairAuditTrail ?? [];
           activeTab = data.valid ? 'summary' : 'diagnostics';
           renderTabs();
-          setResult({ repaired: data.repaired, valid: data.valid, notes: data.notes, diagnostics: lastDiagnostics.length });
+          setResult({ repaired: data.repaired, valid: data.valid, notes: data.notes, diagnostics: lastDiagnostics.length, repairOptions: lastRepairOptions.length, auditEntries: lastRepairAuditTrail.length, validation: data.repairValidation });
         } catch (error) {
           setResult(error instanceof Error ? error.message : String(error), true);
         }
       });
+      async function applyRepairOption(candidateId) {
+        try {
+          const data = await postJson('/api/des-author/apply-repair', { study: currentCase(), candidateIds: [candidateId] });
+          if (data.study) setCase(data.study);
+          lastDiagnostics = data.diagnostics ?? [];
+          lastRepairOptions = data.repairOptions ?? [];
+          lastRepairAuditTrail = data.repairAuditTrail ?? [];
+          activeTab = 'diagnostics';
+          renderTabs();
+          setResult({ repaired: data.repaired, valid: data.valid, diagnostics: lastDiagnostics.length, repairOptions: lastRepairOptions.length, auditEntries: lastRepairAuditTrail.length, validation: data.repairValidation });
+        } catch (error) {
+          setResult(error instanceof Error ? error.message : String(error), true);
+        }
+      }
       $('openSelected').addEventListener('click', () => {
         if ($('study').value) location.href = viewerUrlFor($('study').value);
       });

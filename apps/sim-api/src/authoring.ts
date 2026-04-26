@@ -1,5 +1,14 @@
 import { analyzeDesModel, type ModelDiagnostic, type ModelDiagnosticsReport } from '@des-platform/model-compiler';
 import {
+  analyzeRepairOptions,
+  applySelectedRepairs,
+  validateRepair,
+  type RepairAuditEntry,
+  type RepairOption,
+  type RepairPlan,
+  type RepairValidationResult
+} from '@des-platform/model-repair';
+import {
   AiNativeDesModelDefinitionSchema,
   type AiNativeDesModelDefinition,
   type ProcessFlowBlockDefinition
@@ -20,6 +29,8 @@ export type AuthoringDiagnoseResult = {
   study: SimulationStudyCaseDefinition | null;
   modelDiagnostics: ModelDiagnosticsReport | null;
   diagnostics: AuthoringDiagnostic[];
+  repairOptions: RepairOption[];
+  repairModelHash: string | null;
 };
 
 export type DraftStudyResult = AuthoringDiagnoseResult & {
@@ -36,6 +47,20 @@ type DraftRequest = {
 type RepairRequest = {
   study?: unknown;
   brief?: string;
+  candidateIds?: string[];
+  includeSafeAuto?: boolean;
+  includeRequiresConfirmation?: boolean;
+};
+
+export type AuthoringRepairPlanResult = AuthoringDiagnoseResult & {
+  repairPlan: RepairPlan | null;
+};
+
+export type AuthoringRepairResult = AuthoringDiagnoseResult & {
+  repaired: boolean;
+  notes: string[];
+  repairAuditTrail: RepairAuditEntry[];
+  repairValidation: RepairValidationResult | null;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -274,7 +299,9 @@ export function diagnoseDesStudy(input: unknown): AuthoringDiagnoseResult {
         modelValid: false,
         study: null,
         modelDiagnostics: null,
-        diagnostics
+        diagnostics,
+        repairOptions: [],
+        repairModelHash: null
       };
     }
   } else {
@@ -302,11 +329,14 @@ export function diagnoseDesStudy(input: unknown): AuthoringDiagnoseResult {
       modelValid: false,
       study,
       modelDiagnostics: null,
-      diagnostics
+      diagnostics,
+      repairOptions: [],
+      repairModelHash: null
     };
   }
 
   const modelDiagnostics = analyzeDesModel(model);
+  const repairPlan = analyzeRepairOptions(model);
   diagnostics.push(...modelDiagnostics.diagnostics.map((diagnostic) => ({ ...diagnostic, source: 'model' as const })));
   return {
     valid: parsedStudy.success && modelDiagnostics.valid,
@@ -314,7 +344,17 @@ export function diagnoseDesStudy(input: unknown): AuthoringDiagnoseResult {
     modelValid: modelDiagnostics.valid,
     study,
     modelDiagnostics,
-    diagnostics
+    diagnostics,
+    repairOptions: repairPlan.options,
+    repairModelHash: repairPlan.modelHash
+  };
+}
+
+export function planDesStudyRepairs(input: unknown): AuthoringRepairPlanResult {
+  const diagnosed = diagnoseDesStudy(input);
+  return {
+    ...diagnosed,
+    repairPlan: diagnosed.study?.model ? analyzeRepairOptions(diagnosed.study.model) : null
   };
 }
 
@@ -338,7 +378,11 @@ export async function draftDesStudy(request: DraftRequest): Promise<DraftStudyRe
   return { ...diagnosed, provider: 'rules', notes };
 }
 
-export function repairDesStudy(request: RepairRequest): AuthoringDiagnoseResult & { repaired: boolean; notes: string[] } {
+export function repairDesStudy(request: RepairRequest): AuthoringRepairResult {
+  return applyDesStudyRepairs(request);
+}
+
+export function applyDesStudyRepairs(request: RepairRequest): AuthoringRepairResult {
   const notes: string[] = [];
   let study: SimulationStudyCaseDefinition;
   try {
@@ -348,7 +392,24 @@ export function repairDesStudy(request: RepairRequest): AuthoringDiagnoseResult 
     notes.push('Input could not be normalized; generated a fresh runnable draft from the brief.');
   }
 
-  const model = study.model ? repairRunnableModel(study.model, notes) : buildRuleBasedStudy(request.brief || study.name, {}).model!;
+  const baseModel = study.model ?? buildRuleBasedStudy(request.brief || study.name, {}).model!;
+  const candidateRepair = applySelectedRepairs(baseModel, {
+    candidateIds: request.candidateIds,
+    includeSafeAuto: request.includeSafeAuto,
+    includeRequiresConfirmation: request.includeRequiresConfirmation
+  });
+  let model: AiNativeDesModelDefinition;
+  const parsedCandidateModel = AiNativeDesModelDefinitionSchema.safeParse(candidateRepair.model);
+  if (parsedCandidateModel.success) {
+    model = parsedCandidateModel.data;
+  } else {
+    model = repairRunnableModel(baseModel, notes);
+    notes.push('Structured repair candidates did not produce a schema-valid model; applied runnable-model fallback.');
+  }
+  model = repairRunnableModel(model, notes);
+  if (candidateRepair.auditTrail.length > 0) {
+    notes.push(`Applied ${candidateRepair.auditTrail.length} repair patch${candidateRepair.auditTrail.length === 1 ? '' : 'es'}.`);
+  }
   const experimentId = model.experiments[0]?.id ?? 'baseline';
   const repairedStudy = SimulationStudyCaseDefinitionSchema.parse({
     ...study,
@@ -356,7 +417,13 @@ export function repairDesStudy(request: RepairRequest): AuthoringDiagnoseResult 
     runs: study.runs.length > 0 ? study.runs : [{ experimentId, outputName: `${experimentId}-run`, htmlReport: true }]
   });
   const result = diagnoseDesStudy(repairedStudy);
-  return { ...result, repaired: true, notes };
+  return {
+    ...result,
+    repaired: true,
+    notes,
+    repairAuditTrail: candidateRepair.auditTrail,
+    repairValidation: validateRepair(baseModel, model)
+  };
 }
 
 function repairRunnableModel(model: AiNativeDesModelDefinition, notes: string[]): AiNativeDesModelDefinition {
