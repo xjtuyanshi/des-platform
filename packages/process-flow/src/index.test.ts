@@ -371,6 +371,44 @@ describe('ProcessFlowRuntime', () => {
     expect(result.snapshot.materialHandling?.storageSystems[0]?.slots[0]?.itemId).toBe('store-source-2');
   });
 
+  it('preserves removed item identity when retrieving storage by SKU', () => {
+    const materialHandling = createMaterialHandlingRuntime({
+      id: 'sku-retrieve',
+      units: 'meter',
+      nodes: [{ id: 'rack-node', type: 'storage', x: 0, z: 0 }],
+      paths: [],
+      transporterFleets: [],
+      storageSystems: [{ id: 'rack', nodeId: 'rack-node', capacity: 2 }],
+      conveyors: [],
+      zones: [],
+      obstacles: []
+    });
+    const flow: ProcessFlowDefinition = {
+      id: 'sku-retrieve-flow',
+      resourcePools: [],
+      blocks: [
+        { id: 'store-source', kind: 'source', entityType: 'pallet', startAtSec: 0, scheduleAtSec: [0], attributes: { itemId: 'item-123', sku: 'sku-a' } },
+        { id: 'retrieve-source', kind: 'source', entityType: 'order', startAtSec: 0, scheduleAtSec: [1], attributes: { sku: 'sku-a' } },
+        { id: 'store', kind: 'store', storageId: 'rack', itemIdAttribute: 'itemId', skuAttribute: 'sku' },
+        { id: 'retrieve', kind: 'retrieve', storageId: 'rack', skuAttribute: 'sku', retrievePolicy: 'anyMatchingSku' },
+        { id: 'store-sink', kind: 'sink' },
+        { id: 'retrieve-sink', kind: 'sink' }
+      ],
+      connections: [
+        { from: 'store-source', to: 'store' },
+        { from: 'store', to: 'store-sink' },
+        { from: 'retrieve-source', to: 'retrieve' },
+        { from: 'retrieve', to: 'retrieve-sink' }
+      ]
+    };
+
+    const result = runProcessFlow(flow, 5, undefined, { materialHandling });
+    const retrieveEntity = result.snapshot.entities.find((entity) => entity.id === 'retrieve-source-1');
+
+    expect(retrieveEntity?.attributes.retrievedItemId).toBe('item-123');
+    expect(retrieveEntity?.attributes.retrievedSku).toBe('sku-a');
+  });
+
   it('uses conveyor token capacity and wakes waiting entities on exit', () => {
     const materialHandling = createMaterialHandlingRuntime({
       id: 'conveyor-capacity',

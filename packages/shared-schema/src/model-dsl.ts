@@ -205,10 +205,11 @@ export const MhCoordinate2Schema = z.object({
 
 export const MaterialNodeDefinitionSchema = MhCoordinate2Schema.extend({
   id: z.string(),
-  type: z.enum(['point', 'station', 'dock', 'storage', 'home', 'parking', 'charger', 'conveyor-port']).default('point'),
+  type: z.enum(['point', 'station', 'dock', 'storage', 'home', 'parking', 'charger', 'conveyor-port', 'intersection']).default('point'),
   label: z.string().optional(),
   capacity: z.number().int().positive().optional(),
-  reservationDurationSec: z.number().nonnegative().optional()
+  reservationDurationSec: z.number().nonnegative().optional(),
+  waitAllowed: z.boolean().optional()
 });
 
 export const MaterialPathDefinitionSchema = z.object({
@@ -408,7 +409,7 @@ export const SourceBlockDefinitionSchema = BlockBaseSchema.extend({
 export const QueueBlockDefinitionSchema = BlockBaseSchema.extend({
   kind: z.literal('queue'),
   capacity: z.number().int().positive().optional(),
-  discipline: z.enum(['fifo', 'lifo']).optional(),
+  discipline: z.literal('fifo').optional(),
   overflowPolicy: z.enum(['blockUpstream', 'reject', 'drop']).optional()
 });
 

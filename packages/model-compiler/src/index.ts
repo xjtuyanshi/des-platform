@@ -9,6 +9,7 @@ import {
   type AiNativeDesModelDefinition,
   type DslLiteral,
   type ExperimentDefinition,
+  type MaterialPathDefinition,
   type ModelParameterDefinition,
   type ProcessFlowBlockDefinition
 } from '@des-platform/shared-schema/model-dsl';
@@ -44,8 +45,14 @@ export type GenericTransporterFleetSummary = {
   totalEmptyDistanceM: number;
   totalLoadedDistanceM: number;
   totalTrafficWaitTimeSec: number;
+  totalPathTrafficWaitTimeSec: number;
+  totalNodeTrafficWaitTimeSec: number;
   totalEmptyTrafficWaitTimeSec: number;
   totalLoadedTrafficWaitTimeSec: number;
+  totalEmptyPathTrafficWaitTimeSec: number;
+  totalEmptyNodeTrafficWaitTimeSec: number;
+  totalLoadedPathTrafficWaitTimeSec: number;
+  totalLoadedNodeTrafficWaitTimeSec: number;
   totalTravelTimeSec: number;
 };
 
@@ -149,6 +156,19 @@ export type GenericDesSweepResult = {
 
 export type ModelDiagnosticSeverity = 'error' | 'warning';
 
+export type ModelRepairCandidate = {
+  kind: 'jsonPatch' | 'proposal';
+  safety: 'safeAutoApply' | 'requiresConfirmation';
+  confidence: number;
+  requiresUserConfirmation: boolean;
+  patch: Array<{
+    op: 'add' | 'replace' | 'remove';
+    path: string;
+    value?: unknown;
+  }>;
+  explanation: string;
+};
+
 export type ModelDiagnostic = {
   severity: ModelDiagnosticSeverity;
   code: string;
@@ -158,16 +178,7 @@ export type ModelDiagnostic = {
   humanPath: string;
   message: string;
   risk: 'safe' | 'needs-confirmation';
-  repairCandidate: {
-    kind: 'json-patch';
-    confidence: number;
-    requiresUserConfirmation: boolean;
-    patch: Array<{
-      op: 'add' | 'replace' | 'remove';
-      path: string;
-      value?: unknown;
-    }>;
-  } | null;
+  repairCandidate: ModelRepairCandidate | null;
   requiresUserConfirmation: boolean;
 };
 
@@ -360,8 +371,14 @@ function buildGenericRunResult(
         totalEmptyDistanceM: fleet.totalEmptyDistanceM,
         totalLoadedDistanceM: fleet.totalLoadedDistanceM,
         totalTrafficWaitTimeSec: fleet.totalTrafficWaitTimeSec,
+        totalPathTrafficWaitTimeSec: fleet.totalPathTrafficWaitTimeSec,
+        totalNodeTrafficWaitTimeSec: fleet.totalNodeTrafficWaitTimeSec,
         totalEmptyTrafficWaitTimeSec: fleet.totalEmptyTrafficWaitTimeSec,
         totalLoadedTrafficWaitTimeSec: fleet.totalLoadedTrafficWaitTimeSec,
+        totalEmptyPathTrafficWaitTimeSec: fleet.totalEmptyPathTrafficWaitTimeSec,
+        totalEmptyNodeTrafficWaitTimeSec: fleet.totalEmptyNodeTrafficWaitTimeSec,
+        totalLoadedPathTrafficWaitTimeSec: fleet.totalLoadedPathTrafficWaitTimeSec,
+        totalLoadedNodeTrafficWaitTimeSec: fleet.totalLoadedNodeTrafficWaitTimeSec,
         totalTravelTimeSec: fleet.totalTravelTimeSec
       })),
       entities
@@ -669,17 +686,19 @@ function buildDiagnosticsReport(diagnostics: ModelDiagnostic[]): ModelDiagnostic
 
 function zodIssueToDiagnostic(issue: { path: Array<string | number>; message: string }): ModelDiagnostic {
   const path = issue.path.length === 0 ? '$' : issue.path.join('.');
+  const jsonPointer = pathToJsonPointer(issue.path);
+  const repairCandidate = schemaRepairCandidate(issue.path);
   return {
     severity: 'error',
     code: 'schema.invalid',
     path,
-    jsonPointer: pathToJsonPointer(issue.path),
+    jsonPointer,
     schemaPath: path,
     humanPath: path,
     message: issue.message,
-    risk: 'safe',
-    repairCandidate: null,
-    requiresUserConfirmation: false
+    risk: repairCandidate?.requiresUserConfirmation ? 'needs-confirmation' : 'safe',
+    repairCandidate,
+    requiresUserConfirmation: repairCandidate?.requiresUserConfirmation ?? false
   };
 }
 
@@ -687,6 +706,7 @@ function analyzeProcessGraph(model: AiNativeDesModelDefinition): ModelDiagnostic
   const diagnostics: ModelDiagnostic[] = [];
   const blocks = model.process.blocks;
   const blockMap = new Map(blocks.map((block) => [block.id, block]));
+  const blockPointer = new Map(blocks.map((block, index) => [block.id, `/process/blocks/${index}`]));
   const outgoing = new Map<string, string[]>();
   const incoming = new Map<string, string[]>();
 
@@ -703,46 +723,72 @@ function analyzeProcessGraph(model: AiNativeDesModelDefinition): ModelDiagnostic
   const sourceIds = blocks.filter((block) => block.kind === 'source').map((block) => block.id);
   const sinkIds = blocks.filter((block) => block.kind === 'sink').map((block) => block.id);
   if (sourceIds.length === 0) {
-    diagnostics.push(error('process.no-source', 'process.blocks', 'Process must define at least one source block'));
+    diagnostics.push(error('process.no-source', 'process.blocks', 'Process must define at least one source block', {
+      jsonPointer: '/process/blocks',
+      repairCandidate: safePatch([{ op: 'add', path: '/process/blocks/-', value: { id: 'source', kind: 'source', entityType: 'entity', scheduleAtSec: [0] } }], 'Add a minimal source block that creates one entity at time zero.')
+    }));
   }
   if (sinkIds.length === 0) {
-    diagnostics.push(error('process.no-sink', 'process.blocks', 'Process should define at least one sink block'));
+    diagnostics.push(error('process.no-sink', 'process.blocks', 'Process should define at least one sink block', {
+      jsonPointer: '/process/blocks',
+      repairCandidate: safePatch([{ op: 'add', path: '/process/blocks/-', value: { id: 'sink', kind: 'sink' } }], 'Add a minimal sink block so completed entities have an explicit destination.')
+    }));
   }
 
   const reachable = reachableFrom(sourceIds, outgoing);
   for (const block of blocks) {
     if (!reachable.has(block.id)) {
-      diagnostics.push(warning('process.unreachable-block', `process.blocks.${block.id}`, `Block ${block.id} is not reachable from any source`));
+      diagnostics.push(warning('process.unreachable-block', `process.blocks.${block.id}`, `Block ${block.id} is not reachable from any source`, {
+        jsonPointer: blockPointer.get(block.id)
+      }));
     }
 
     if (block.kind !== 'sink' && (outgoing.get(block.id)?.length ?? 0) === 0) {
-      diagnostics.push(error('process.dead-end', `process.blocks.${block.id}`, `Block ${block.id} has no outgoing connection`));
+      diagnostics.push(error('process.dead-end', `process.blocks.${block.id}`, `Block ${block.id} has no outgoing connection`, {
+        jsonPointer: blockPointer.get(block.id),
+        repairCandidate: sinkIds.length === 1
+          ? proposalPatch([{ op: 'add', path: '/process/connections/-', value: { from: block.id, to: sinkIds[0] } }], `Connect dead-end block ${block.id} to sink ${sinkIds[0]}. Confirm this route is intended.`)
+          : null
+      }));
     }
 
     if (block.kind !== 'source' && block.kind !== 'sink' && (incoming.get(block.id)?.length ?? 0) === 0) {
-      diagnostics.push(warning('process.no-incoming', `process.blocks.${block.id}`, `Block ${block.id} has no incoming connection`));
+      diagnostics.push(warning('process.no-incoming', `process.blocks.${block.id}`, `Block ${block.id} has no incoming connection`, {
+        jsonPointer: blockPointer.get(block.id)
+      }));
     }
 
     if (block.kind === 'selectOutput' && !(model.process.connections.some((connection) => connection.from === block.id && !connection.condition))) {
-      diagnostics.push(warning('process.select-no-fallback', `process.blocks.${block.id}`, `SelectOutput block ${block.id} has no unconditional fallback branch`));
+      diagnostics.push(warning('process.select-no-fallback', `process.blocks.${block.id}`, `SelectOutput block ${block.id} has no unconditional fallback branch`, {
+        jsonPointer: blockPointer.get(block.id),
+        repairCandidate: sinkIds.length === 1
+          ? proposalPatch([{ op: 'add', path: '/process/connections/-', value: { from: block.id, to: sinkIds[0] } }], `Add an unconditional fallback branch from ${block.id} to ${sinkIds[0]}. Confirm this fallback is the right business route.`)
+          : null
+      }));
     }
   }
 
   for (const sourceId of sourceIds) {
     if (!canReachAnySink(sourceId, new Set(sinkIds), outgoing)) {
-      diagnostics.push(error('process.source-cannot-reach-sink', `process.blocks.${sourceId}`, `Source ${sourceId} cannot reach any sink block`));
+      diagnostics.push(error('process.source-cannot-reach-sink', `process.blocks.${sourceId}`, `Source ${sourceId} cannot reach any sink block`, {
+        jsonPointer: blockPointer.get(sourceId)
+      }));
     }
   }
 
   for (const sinkId of sinkIds) {
     if ((incoming.get(sinkId)?.length ?? 0) === 0) {
-      diagnostics.push(warning('process.unused-sink', `process.blocks.${sinkId}`, `Sink ${sinkId} has no incoming connection`));
+      diagnostics.push(warning('process.unused-sink', `process.blocks.${sinkId}`, `Sink ${sinkId} has no incoming connection`, {
+        jsonPointer: blockPointer.get(sinkId)
+      }));
     }
   }
 
   for (const block of blocks) {
     if (block.kind === 'release' && !hasUpstreamSeizeOrService(block, blockMap, incoming)) {
-      diagnostics.push(warning('process.release-without-upstream-hold', `process.blocks.${block.id}`, `Release block ${block.id} has no upstream seize/service for ${block.resourcePoolId}`));
+      diagnostics.push(warning('process.release-without-upstream-hold', `process.blocks.${block.id}`, `Release block ${block.id} has no upstream seize/service for ${block.resourcePoolId}`, {
+        jsonPointer: blockPointer.get(block.id)
+      }));
     }
   }
 
@@ -752,14 +798,17 @@ function analyzeProcessGraph(model: AiNativeDesModelDefinition): ModelDiagnostic
 function analyzeParameterSemantics(model: AiNativeDesModelDefinition): ModelDiagnostic[] {
   const diagnostics: ModelDiagnostic[] = [];
 
-  for (const parameter of model.parameters) {
+  for (const [index, parameter] of model.parameters.entries()) {
     const pathError = validateParameterPath(model, parameter);
     if (pathError) {
-      diagnostics.push(error('parameter.path-invalid', `parameters.${parameter.id}.path`, pathError.message));
+      diagnostics.push(error('parameter.path-invalid', `parameters.${parameter.id}.path`, pathError.message, {
+        jsonPointer: `/parameters/${index}/path`,
+        repairCandidate: proposalPatch([{ op: 'remove', path: `/parameters/${index}` }], `Remove parameter ${parameter.id}. Confirm removal if this parameter is not needed, or edit the path manually.`)
+      }));
     }
   }
 
-  for (const experiment of model.experiments) {
+  for (const [index, experiment] of model.experiments.entries()) {
     try {
       materializeModelForExperiment(model, experiment);
       for (const sweepExperiment of buildSweepExperiments(experiment)) {
@@ -769,7 +818,8 @@ function analyzeParameterSemantics(model: AiNativeDesModelDefinition): ModelDiag
       diagnostics.push(error(
         'parameter.override-invalid',
         `experiments.${experiment.id}.parameterOverrides`,
-        materializeError instanceof Error ? materializeError.message : `Experiment ${experiment.id} has invalid parameter overrides`
+        materializeError instanceof Error ? materializeError.message : `Experiment ${experiment.id} has invalid parameter overrides`,
+        { jsonPointer: `/experiments/${index}/parameterOverrides` }
       ));
     }
   }
@@ -793,26 +843,34 @@ function analyzeMaterialHandlingSemantics(model: AiNativeDesModelDefinition): Mo
   if (!model.materialHandling) {
     return diagnostics;
   }
+  const blockPointer = new Map(model.process.blocks.map((block, index) => [block.id, `/process/blocks/${index}`]));
+  const nodeById = new Map(model.materialHandling.nodes.map((node) => [node.id, node]));
+  const pathIndexById = new Map(model.materialHandling.paths.map((path, index) => [path.id, index]));
 
   if (materialBlocks.length === 0) {
-    diagnostics.push(warning('material.unused-layout', 'materialHandling', 'materialHandling is defined but no material handling process blocks use it'));
+    diagnostics.push(warning('material.unused-layout', 'materialHandling', 'materialHandling is defined but no material handling process blocks use it', {
+      jsonPointer: '/materialHandling'
+    }));
   }
 
   diagnostics.push(
-    ...analyzeMaterialHandlingDefinition(model.materialHandling).map((diagnostic) => ({
-      severity: diagnostic.severity,
-      code: diagnostic.code,
-      path: diagnostic.path,
-      jsonPointer: diagnosticPathToPointer(diagnostic.path),
-      schemaPath: diagnostic.path,
-      humanPath: diagnostic.path,
-      message: diagnostic.message,
-      risk: diagnostic.code === 'material.unmodeled-path-crossing' || diagnostic.code === 'material.path-obstacle-clearance'
-        ? 'needs-confirmation' as const
-        : 'safe' as const,
-      repairCandidate: null,
-      requiresUserConfirmation: diagnostic.code === 'material.unmodeled-path-crossing' || diagnostic.code === 'material.path-obstacle-clearance'
-    }))
+    ...analyzeMaterialHandlingDefinition(model.materialHandling).map((diagnostic) => {
+      const repairCandidate = materialDiagnosticRepairCandidate(diagnostic, model, pathIndexById);
+      return {
+        severity: diagnostic.severity,
+        code: diagnostic.code,
+        path: diagnostic.path,
+        jsonPointer: materialDiagnosticPointer(diagnostic.path, pathIndexById),
+        schemaPath: diagnostic.path,
+        humanPath: diagnostic.path,
+        message: diagnostic.message,
+        risk: diagnostic.code === 'material.unmodeled-path-crossing' || diagnostic.code === 'material.path-obstacle-clearance'
+          ? 'needs-confirmation' as const
+          : 'safe' as const,
+        repairCandidate,
+        requiresUserConfirmation: repairCandidate?.requiresUserConfirmation ?? (diagnostic.code === 'material.unmodeled-path-crossing' || diagnostic.code === 'material.path-obstacle-clearance')
+      };
+    })
   );
 
   const runtime = createMaterialHandlingRuntime(model.materialHandling);
@@ -824,7 +882,29 @@ function analyzeMaterialHandlingSemantics(model: AiNativeDesModelDefinition): Mo
     try {
       runtime.findShortestRoute(block.fromNodeId, block.toNodeId, block.fleetId);
     } catch (routeError) {
-      diagnostics.push(error('material.route-unreachable', `process.blocks.${block.id}`, routeError instanceof Error ? routeError.message : `MoveByTransporter block ${block.id} route is unreachable`));
+      const fromNode = nodeById.get(block.fromNodeId);
+      const toNode = nodeById.get(block.toNodeId);
+      diagnostics.push(error('material.route-unreachable', `process.blocks.${block.id}`, routeError instanceof Error ? routeError.message : `MoveByTransporter block ${block.id} route is unreachable`, {
+        jsonPointer: blockPointer.get(block.id),
+        repairCandidate: fromNode && toNode
+          ? proposalPatch([
+            {
+              op: 'add',
+              path: '/materialHandling/paths/-',
+              value: {
+                id: `${block.fromNodeId}-${block.toNodeId}`,
+                from: block.fromNodeId,
+                to: block.toNodeId,
+                lengthM: Number(distance2dForRepair(fromNode, toNode).toFixed(4)),
+                bidirectional: true,
+                trafficControl: 'reservation',
+                capacity: 1,
+                mode: 'path-guided'
+              }
+            }
+          ], `Add a direct path between ${block.fromNodeId} and ${block.toNodeId}. Confirm the aisle exists in the real layout before applying.`)
+          : null
+      }));
     }
   }
 
@@ -836,7 +916,10 @@ function analyzeExperimentSemantics(model: AiNativeDesModelDefinition): ModelDia
     return [];
   }
 
-  return [warning('experiment.none', 'experiments', 'Model has no experiments; runner commands need at least one experiment')];
+  return [warning('experiment.none', 'experiments', 'Model has no experiments; runner commands need at least one experiment', {
+    jsonPointer: '/experiments',
+    repairCandidate: safePatch([{ op: 'add', path: '/experiments/-', value: { id: 'baseline', stopTimeSec: 3600, seed: 1 } }], 'Add a default baseline experiment with one hour stop time and deterministic seed.')
+  })];
 }
 
 function reachableFrom(startIds: string[], outgoing: Map<string, string[]>): Set<string> {
@@ -894,33 +977,65 @@ function isMaterialBlock(
   );
 }
 
-function error(code: string, path: string, message: string): ModelDiagnostic {
+type DiagnosticOptions = {
+  jsonPointer?: string;
+  schemaPath?: string;
+  humanPath?: string;
+  repairCandidate?: ModelRepairCandidate | null;
+  risk?: 'safe' | 'needs-confirmation';
+};
+
+function error(code: string, path: string, message: string, options: DiagnosticOptions = {}): ModelDiagnostic {
+  const repairCandidate = options.repairCandidate ?? null;
   return {
     severity: 'error',
     code,
     path,
-    jsonPointer: diagnosticPathToPointer(path),
-    schemaPath: path,
-    humanPath: path,
+    jsonPointer: options.jsonPointer ?? diagnosticPathToPointer(path),
+    schemaPath: options.schemaPath ?? path,
+    humanPath: options.humanPath ?? path,
     message,
-    risk: 'safe',
-    repairCandidate: null,
-    requiresUserConfirmation: false
+    risk: options.risk ?? (repairCandidate?.requiresUserConfirmation ? 'needs-confirmation' : 'safe'),
+    repairCandidate,
+    requiresUserConfirmation: repairCandidate?.requiresUserConfirmation ?? false
   };
 }
 
-function warning(code: string, path: string, message: string): ModelDiagnostic {
+function warning(code: string, path: string, message: string, options: DiagnosticOptions = {}): ModelDiagnostic {
+  const repairCandidate = options.repairCandidate ?? null;
   return {
     severity: 'warning',
     code,
     path,
-    jsonPointer: diagnosticPathToPointer(path),
-    schemaPath: path,
-    humanPath: path,
+    jsonPointer: options.jsonPointer ?? diagnosticPathToPointer(path),
+    schemaPath: options.schemaPath ?? path,
+    humanPath: options.humanPath ?? path,
     message,
-    risk: 'safe',
-    repairCandidate: null,
-    requiresUserConfirmation: false
+    risk: options.risk ?? (repairCandidate?.requiresUserConfirmation ? 'needs-confirmation' : 'safe'),
+    repairCandidate,
+    requiresUserConfirmation: repairCandidate?.requiresUserConfirmation ?? false
+  };
+}
+
+function safePatch(patch: ModelRepairCandidate['patch'], explanation: string, confidence = 0.95): ModelRepairCandidate {
+  return {
+    kind: 'jsonPatch',
+    safety: 'safeAutoApply',
+    confidence,
+    requiresUserConfirmation: false,
+    patch,
+    explanation
+  };
+}
+
+function proposalPatch(patch: ModelRepairCandidate['patch'], explanation: string, confidence = 0.72): ModelRepairCandidate {
+  return {
+    kind: 'proposal',
+    safety: 'requiresConfirmation',
+    confidence,
+    requiresUserConfirmation: true,
+    patch,
+    explanation
   };
 }
 
@@ -931,9 +1046,159 @@ function pathToJsonPointer(path: Array<string | number>): string {
   return `/${path.map((part) => String(part).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`;
 }
 
+function schemaRepairCandidate(path: Array<string | number>): ModelRepairCandidate | null {
+  const pointer = pathToJsonPointer(path);
+  const field = String(path.at(-1) ?? '');
+  if (field === 'discipline') {
+    return safePatch([{ op: 'replace', path: pointer, value: 'fifo' }], 'Queue discipline P0 supports FIFO only; replace the unsupported discipline with fifo.');
+  }
+  if (field === 'capacity' || field === 'queueCapacity') {
+    return safePatch([{ op: 'replace', path: pointer, value: 1 }], 'Replace invalid capacity with the smallest valid positive capacity.');
+  }
+  if (field === 'reservationDurationSec') {
+    return safePatch([{ op: 'replace', path: pointer, value: 0.5 }], 'Replace invalid node reservation duration with the default 0.5 second occupancy window.');
+  }
+  if (field === 'speedMps') {
+    return safePatch([{ op: 'replace', path: pointer, value: 1 }], 'Replace invalid speed with a conservative 1 m/s default.');
+  }
+  return null;
+}
+
+function materialDiagnosticPointer(path: string, pathIndexById: Map<string, number>): string {
+  const parts = path.split('.');
+  if (parts[0] !== 'materialHandling') {
+    return diagnosticPathToPointer(path);
+  }
+  if (parts[1] === 'paths' && parts[2]) {
+    const pathIndex = pathIndexById.get(parts[2]);
+    if (pathIndex !== undefined) {
+      return `/materialHandling/paths/${pathIndex}${parts.slice(3).map((part) => `/${part.replace(/~/g, '~0').replace(/\//g, '~1')}`).join('')}`;
+    }
+  }
+  return diagnosticPathToPointer(path);
+}
+
+function materialDiagnosticRepairCandidate(
+  diagnostic: { code: string; message: string },
+  model: AiNativeDesModelDefinition,
+  pathIndexById: Map<string, number>
+): ModelRepairCandidate | null {
+  if (diagnostic.code !== 'material.unmodeled-path-crossing' || !model.materialHandling) {
+    return null;
+  }
+
+  const match = /^Paths (?<left>.+?) and (?<right>.+?) cross geometrically/.exec(diagnostic.message);
+  const leftId = match?.groups?.left;
+  const rightId = match?.groups?.right;
+  if (!leftId || !rightId) {
+    return null;
+  }
+
+  const left = model.materialHandling.paths.find((path) => path.id === leftId);
+  const right = model.materialHandling.paths.find((path) => path.id === rightId);
+  const leftIndex = pathIndexById.get(leftId);
+  const rightIndex = pathIndexById.get(rightId);
+  if (!left || !right || leftIndex === undefined || rightIndex === undefined) {
+    return null;
+  }
+
+  const nodesById = new Map(model.materialHandling.nodes.map((node) => [node.id, node]));
+  const leftFrom = nodesById.get(left.from);
+  const leftTo = nodesById.get(left.to);
+  const rightFrom = nodesById.get(right.from);
+  const rightTo = nodesById.get(right.to);
+  if (!leftFrom || !leftTo || !rightFrom || !rightTo) {
+    return null;
+  }
+
+  const intersection = lineIntersectionForRepair(leftFrom, leftTo, rightFrom, rightTo);
+  if (!intersection) {
+    return null;
+  }
+
+  const intersectionId = `${left.id}-${right.id}-intersection`;
+  const leftSplit = splitPathForRepair(left, leftFrom, leftTo, intersectionId, intersection);
+  const rightSplit = splitPathForRepair(right, rightFrom, rightTo, intersectionId, intersection);
+  const removeIndexes = [leftIndex, rightIndex].sort((a, b) => b - a);
+  return proposalPatch([
+    {
+      op: 'add',
+      path: '/materialHandling/nodes/-',
+      value: {
+        id: intersectionId,
+        type: 'intersection',
+        x: Number(intersection.x.toFixed(4)),
+        z: Number(intersection.z.toFixed(4)),
+        capacity: 1,
+        reservationDurationSec: 0.5,
+        waitAllowed: false
+      }
+    },
+    ...removeIndexes.map((index) => ({ op: 'remove' as const, path: `/materialHandling/paths/${index}` })),
+    ...[...leftSplit, ...rightSplit].map((path) => ({ op: 'add' as const, path: '/materialHandling/paths/-', value: path }))
+  ], `Split crossing paths ${left.id} and ${right.id} at a proposed intersection node. Confirm the geometry before applying.`, 0.72);
+}
+
 function diagnosticPathToPointer(path: string): string {
   if (path === '$') {
     return '';
   }
   return `/${path.replace(/^\$\.?/, '').split('.').filter(Boolean).map((part) => part.replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`;
+}
+
+function distance2dForRepair(
+  left: { x: number; z: number },
+  right: { x: number; z: number }
+): number {
+  return Math.hypot(right.x - left.x, right.z - left.z);
+}
+
+function lineIntersectionForRepair(
+  a: { x: number; z: number },
+  b: { x: number; z: number },
+  c: { x: number; z: number },
+  d: { x: number; z: number }
+): { x: number; z: number } | null {
+  const denominator = (a.x - b.x) * (c.z - d.z) - (a.z - b.z) * (c.x - d.x);
+  if (Math.abs(denominator) < 1e-9) {
+    return null;
+  }
+  const leftCross = a.x * b.z - a.z * b.x;
+  const rightCross = c.x * d.z - c.z * d.x;
+  return {
+    x: (leftCross * (c.x - d.x) - (a.x - b.x) * rightCross) / denominator,
+    z: (leftCross * (c.z - d.z) - (a.z - b.z) * rightCross) / denominator
+  };
+}
+
+function splitPathForRepair(
+  path: MaterialPathDefinition,
+  fromNode: { x: number; z: number },
+  toNode: { x: number; z: number },
+  intersectionId: string,
+  intersection: { x: number; z: number }
+): MaterialPathDefinition[] {
+  const common = {
+    bidirectional: path.bidirectional,
+    speedLimitMps: path.speedLimitMps,
+    trafficControl: path.trafficControl,
+    capacity: path.capacity,
+    mode: path.mode
+  };
+  return [
+    {
+      ...common,
+      id: `${path.id}-to-${intersectionId}`,
+      from: path.from,
+      to: intersectionId,
+      lengthM: Number(distance2dForRepair(fromNode, intersection).toFixed(4))
+    },
+    {
+      ...common,
+      id: `${intersectionId}-to-${path.to}`,
+      from: intersectionId,
+      to: path.to,
+      lengthM: Number(distance2dForRepair(intersection, toNode).toFixed(4))
+    }
+  ];
 }

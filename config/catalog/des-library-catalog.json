@@ -599,7 +599,7 @@
           "id": "nodes",
           "type": "MaterialNode[]",
           "required": true,
-          "description": "Named coordinates for docks, stations, storage, homes, parking, chargers, and conveyor ports."
+          "description": "Named coordinates for docks, stations, storage, homes, parking, chargers, conveyor ports, and intersections. Nodes may define capacity, reservationDurationSec, and waitAllowed."
         },
         {
           "id": "paths",
@@ -644,6 +644,7 @@
         "Storage slotIds length must match capacity when slotIds are provided.",
         "Path trafficControl defaults to reservation and path capacity defaults to 1.",
         "Node capacity defaults to 1 and node reservation duration defaults to 0.5s in runtime.",
+        "Intersection nodes default to waitAllowed=false so route reservation delays entry instead of parking AMRs in the intersection.",
         "If accelerationMps2 and decelerationMps2 are present, route timing uses triangular/trapezoidal velocity profiles."
       ],
       "example": {

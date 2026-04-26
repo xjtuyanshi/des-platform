@@ -39,7 +39,8 @@
                   "home",
                   "parking",
                   "charger",
-                  "conveyor-port"
+                  "conveyor-port",
+                  "intersection"
                 ],
                 "default": "point"
               },
@@ -53,6 +54,9 @@
               "reservationDurationSec": {
                 "type": "number",
                 "minimum": 0
+              },
+              "waitAllowed": {
+                "type": "boolean"
               }
             },
             "required": [

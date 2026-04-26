@@ -66,6 +66,8 @@ Material Handling returns a `TransportTaskPlan` containing empty route, load, lo
 
 Path-guided traffic uses path and node reservations. Nodes have capacity and a non-zero reservation duration by default; the route planner reserves the next node before entering the current path, so a vehicle does not wait at the tail of a path for a blocked intersection.
 
+Intersection nodes are non-waitable by default. If the next path segment is not available, the route planner delays entry into the intersection rather than scheduling a vehicle to queue inside it. Station, dock, charger, parking, storage, and ordinary point nodes are waitable unless `waitAllowed` is explicitly set to `false`.
+
 ## Diagnostics
 
 Bad business semantics should surface through diagnostics and repair candidates when possible. Runtime exceptions are reserved for true model errors such as missing block ids, unknown resource pools, unknown storage systems, and unreachable material handling routes.

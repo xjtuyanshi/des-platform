@@ -250,10 +250,7 @@
                   },
                   "discipline": {
                     "type": "string",
-                    "enum": [
-                      "fifo",
-                      "lifo"
-                    ]
+                    "const": "fifo"
                   },
                   "overflowPolicy": {
                     "type": "string",

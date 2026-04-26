@@ -1,5 +1,36 @@
 import { analyzeDesModel, compileDesModel, runDesModel, runDesModelReplicationsToResult, runDesModelSweepToResult, runDesModelToResult } from './index.js';
 
+function applyJsonPatch(document: unknown, patch: Array<{ op: 'add' | 'replace' | 'remove'; path: string; value?: unknown }>): unknown {
+  const root = structuredClone(document);
+  for (const operation of patch) {
+    const parts = operation.path.split('/').slice(1).map((part) => part.replace(/~1/g, '/').replace(/~0/g, '~'));
+    const key = parts.at(-1);
+    const parent = parts.slice(0, -1).reduce<unknown>((current, part) => {
+      if (Array.isArray(current)) {
+        return current[Number(part)];
+      }
+      return (current as Record<string, unknown>)[part];
+    }, root);
+    if (key === undefined) {
+      throw new Error(`Invalid patch path ${operation.path}`);
+    }
+    if (Array.isArray(parent)) {
+      if (operation.op === 'add') {
+        parent.splice(key === '-' ? parent.length : Number(key), 0, operation.value);
+      } else if (operation.op === 'replace') {
+        parent[Number(key)] = operation.value;
+      } else {
+        parent.splice(Number(key), 1);
+      }
+    } else if (operation.op === 'remove') {
+      delete (parent as Record<string, unknown>)[key];
+    } else {
+      (parent as Record<string, unknown>)[key] = operation.value;
+    }
+  }
+  return root;
+}
+
 describe('model compiler', () => {
   it('validates and runs an AI-native process model DSL', () => {
     const model = {
@@ -411,5 +442,174 @@ describe('model compiler', () => {
 
     expect(report.valid).toBe(false);
     expect(report.errors.map((diagnostic) => diagnostic.code)).toContain('parameter.path-invalid');
+  });
+
+  it('emits patch-safe JSON pointers and repair candidates for common diagnostics', () => {
+    const deadEndModel = {
+      schemaVersion: 'des-platform.v1',
+      id: 'dead-end-repair',
+      name: 'Dead End Repair',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'queue', kind: 'queue' },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [{ from: 'source', to: 'queue' }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+    };
+    const report = analyzeDesModel(deadEndModel);
+    const deadEnd = report.diagnostics.find((diagnostic) => diagnostic.code === 'process.dead-end');
+
+    expect(deadEnd?.jsonPointer).toBe('/process/blocks/1');
+    expect(deadEnd?.repairCandidate?.requiresUserConfirmation).toBe(true);
+    const repaired = applyJsonPatch(deadEndModel, deadEnd?.repairCandidate?.patch ?? []) as typeof deadEndModel;
+    expect(repaired.process.connections).toContainEqual({ from: 'queue', to: 'sink' });
+  });
+
+  it('emits safe schema repair candidates for unsupported queue discipline and invalid capacities', () => {
+    const badSchema = {
+      schemaVersion: 'des-platform.v1',
+      id: 'bad-schema-repair',
+      name: 'Bad Schema Repair',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'queue', kind: 'queue', discipline: 'lifo', capacity: -1 },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [
+          { from: 'source', to: 'queue' },
+          { from: 'queue', to: 'sink' }
+        ]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+    };
+    const report = analyzeDesModel(badSchema);
+    const discipline = report.diagnostics.find((diagnostic) => diagnostic.jsonPointer === '/process/blocks/1/discipline');
+    const capacity = report.diagnostics.find((diagnostic) => diagnostic.jsonPointer === '/process/blocks/1/capacity');
+
+    expect(discipline?.repairCandidate?.patch).toEqual([{ op: 'replace', path: '/process/blocks/1/discipline', value: 'fifo' }]);
+    expect(capacity?.repairCandidate?.patch).toEqual([{ op: 'replace', path: '/process/blocks/1/capacity', value: 1 }]);
+    const repaired = applyJsonPatch(badSchema, [
+      ...(discipline?.repairCandidate?.patch ?? []),
+      ...(capacity?.repairCandidate?.patch ?? [])
+    ]) as typeof badSchema;
+    expect(repaired.process.blocks[1]).toMatchObject({ discipline: 'fifo', capacity: 1 });
+  });
+
+  it('emits repair candidates for missing experiments, bad parameters, and unreachable material routes', () => {
+    const noExperiment = analyzeDesModel({
+      schemaVersion: 'des-platform.v1',
+      id: 'no-experiment',
+      name: 'No Experiment',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [{ from: 'source', to: 'sink' }]
+      }
+    });
+    expect(noExperiment.diagnostics.find((diagnostic) => diagnostic.code === 'experiment.none')?.repairCandidate?.patch[0]).toMatchObject({
+      op: 'add',
+      path: '/experiments/-'
+    });
+
+    const badParameter = analyzeDesModel({
+      schemaVersion: 'des-platform.v1',
+      id: 'bad-param-repair',
+      name: 'Bad Param Repair',
+      parameters: [{ id: 'bad', path: '/process/blocks/missing/durationSec', valueType: 'number', defaultValue: 1 }],
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [{ from: 'source', to: 'sink' }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+    });
+    expect(badParameter.diagnostics.find((diagnostic) => diagnostic.code === 'parameter.path-invalid')?.repairCandidate?.patch).toEqual([
+      { op: 'remove', path: '/parameters/0' }
+    ]);
+
+    const unreachable = analyzeDesModel({
+      schemaVersion: 'des-platform.v1',
+      id: 'route-repair',
+      name: 'Route Repair',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'move', kind: 'moveByTransporter', fleetId: 'amr', fromNodeId: 'dock', toNodeId: 'storage' },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [
+          { from: 'source', to: 'move' },
+          { from: 'move', to: 'sink' }
+        ]
+      },
+      materialHandling: {
+        id: 'layout',
+        nodes: [
+          { id: 'dock', type: 'dock', x: 0, z: 0 },
+          { id: 'storage', type: 'storage', x: 10, z: 0 }
+        ],
+        paths: [],
+        transporterFleets: [{ id: 'amr', count: 1, homeNodeId: 'dock', speedMps: 1.5 }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+    });
+    expect(unreachable.diagnostics.find((diagnostic) => diagnostic.code === 'material.route-unreachable')?.repairCandidate).toMatchObject({
+      kind: 'proposal',
+      requiresUserConfirmation: true,
+      patch: [{ op: 'add', path: '/materialHandling/paths/-' }]
+    });
+
+    const crossing = analyzeDesModel({
+      schemaVersion: 'des-platform.v1',
+      id: 'crossing-repair',
+      name: 'Crossing Repair',
+      process: {
+        id: 'flow',
+        blocks: [
+          { id: 'source', kind: 'source', scheduleAtSec: [0] },
+          { id: 'move', kind: 'moveByTransporter', fleetId: 'amr', fromNodeId: 'west', toNodeId: 'east' },
+          { id: 'sink', kind: 'sink' }
+        ],
+        connections: [
+          { from: 'source', to: 'move' },
+          { from: 'move', to: 'sink' }
+        ]
+      },
+      materialHandling: {
+        id: 'layout',
+        nodes: [
+          { id: 'west', type: 'station', x: 0, z: 5 },
+          { id: 'east', type: 'station', x: 10, z: 5 },
+          { id: 'south', type: 'station', x: 5, z: 0 },
+          { id: 'north', type: 'station', x: 5, z: 10 }
+        ],
+        paths: [
+          { id: 'west-east', from: 'west', to: 'east', bidirectional: true },
+          { id: 'south-north', from: 'south', to: 'north', bidirectional: true }
+        ],
+        transporterFleets: [{ id: 'amr', count: 1, homeNodeId: 'west', speedMps: 1 }]
+      },
+      experiments: [{ id: 'baseline', stopTimeSec: 10 }]
+    });
+    const crossingRepair = crossing.diagnostics.find((diagnostic) => diagnostic.code === 'material.unmodeled-path-crossing')?.repairCandidate;
+
+    expect(crossingRepair).toMatchObject({
+      kind: 'proposal',
+      requiresUserConfirmation: true
+    });
+    expect(crossingRepair?.patch.map((operation) => operation.op)).toEqual(['add', 'remove', 'remove', 'add', 'add', 'add', 'add']);
   });
 });

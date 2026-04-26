@@ -122,6 +122,36 @@ describe('MaterialHandlingRuntime', () => {
     ]);
   });
 
+  it('does not wait inside a non-waitable intersection before the next path segment', () => {
+    const runtime = createMaterialHandlingRuntime({
+      id: 'through-intersection',
+      units: 'meter',
+      nodes: [
+        { id: 'west', type: 'station', x: 0, z: 0 },
+        { id: 'intersection', type: 'intersection', x: 1, z: 0, capacity: 1, reservationDurationSec: 0.5, waitAllowed: false },
+        { id: 'east', type: 'station', x: 3, z: 0 }
+      ],
+      paths: [
+        { id: 'west-intersection', from: 'west', to: 'intersection', lengthM: 1, bidirectional: false, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' },
+        { id: 'intersection-east', from: 'intersection', to: 'east', lengthM: 2, bidirectional: false, trafficControl: 'reservation', capacity: 1, mode: 'path-guided' }
+      ],
+      transporterFleets: [{ id: 'amr', vehicleType: 'amr', navigation: 'path-guided', count: 2, homeNodeId: 'west', idlePolicy: 'stay', speedMps: 1, minClearanceM: 0 }],
+      storageSystems: [],
+      conveyors: [],
+      zones: [],
+      obstacles: []
+    });
+
+    runtime.reserveRoute('intersection', 'east', 'amr', 0);
+    const through = runtime.reserveRoute('west', 'east', 'amr', 0);
+
+    expect(through.segments[0]?.startSec).toBe(1);
+    expect(through.segments[0]?.endSec).toBe(2);
+    expect(through.segments[1]?.requestedStartSec).toBe(2);
+    expect(through.segments[1]?.startSec).toBe(2);
+    expect(through.pathTrafficWaitSec).toBe(1);
+  });
+
   it('builds a transporter task plan from empty and loaded reserved routes', () => {
     const runtime = createMaterialHandlingRuntime(materialHandling);
     const unit = runtime.seizeTransporter('amr', 'order-1', 'dock');
@@ -249,7 +279,17 @@ describe('MaterialHandlingRuntime', () => {
     expect(runtime.store('rack-a', 'pallet-1').id).toBe('rack-a-slot-1');
     expect(runtime.store('rack-a', 'pallet-2').id).toBe('rack-a-slot-2');
     expect(() => runtime.store('rack-a', 'pallet-3')).toThrow(/full/);
-    expect(runtime.retrieve('rack-a', 'pallet-1')).toMatchObject({ id: 'rack-a-slot-1', itemId: null });
+    expect(runtime.retrieve('rack-a', 'pallet-1')).toMatchObject({ id: 'rack-a-slot-1', itemId: 'pallet-1' });
     expect(runtime.getConveyorTravelTimeSec('pack-out')).toBe(24);
+  });
+
+  it('returns the removed item identity when retrieving by SKU', () => {
+    const runtime = createMaterialHandlingRuntime(materialHandling);
+
+    runtime.store('rack-a', 'item-123', { sku: 'sku-a', storedAtSec: 0 });
+    const removed = runtime.retrieve('rack-a', 'sku-a', 'anyMatchingSku');
+
+    expect(removed).toMatchObject({ itemId: 'item-123', sku: 'sku-a' });
+    expect(runtime.getSnapshot().storageSystems[0]?.slots[0]?.itemId).toBeNull();
   });
 });

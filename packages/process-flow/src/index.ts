@@ -157,9 +157,15 @@ export type ActiveTransportState = {
   loadedTravelStartSec: number;
   loadedTravelEndSec: number;
   loadedTrafficWaitSec: number;
+  emptyPathTrafficWaitSec: number;
+  emptyNodeTrafficWaitSec: number;
+  loadedPathTrafficWaitSec: number;
+  loadedNodeTrafficWaitSec: number;
   unloadStartSec: number;
   unloadEndSec: number;
   trafficWaitSec: number;
+  pathTrafficWaitSec: number;
+  nodeTrafficWaitSec: number;
 };
 
 export type RuntimeTransporterFleetStats = {
@@ -175,8 +181,14 @@ export type RuntimeTransporterFleetStats = {
   totalLoadedDistanceM: number;
   totalDistanceM: number;
   totalTrafficWaitTimeSec: number;
+  totalPathTrafficWaitTimeSec: number;
+  totalNodeTrafficWaitTimeSec: number;
   totalEmptyTrafficWaitTimeSec: number;
   totalLoadedTrafficWaitTimeSec: number;
+  totalEmptyPathTrafficWaitTimeSec: number;
+  totalEmptyNodeTrafficWaitTimeSec: number;
+  totalLoadedPathTrafficWaitTimeSec: number;
+  totalLoadedNodeTrafficWaitTimeSec: number;
   totalEmptyTravelTimeSec: number;
   totalLoadedTravelTimeSec: number;
   totalTravelTimeSec: number;
@@ -240,8 +252,14 @@ type TransportCompletePayload = {
   emptyDistanceM: number;
   loadedDistanceM: number;
   trafficWaitSec: number;
+  pathTrafficWaitSec: number;
+  nodeTrafficWaitSec: number;
   emptyTrafficWaitSec: number;
   loadedTrafficWaitSec: number;
+  emptyPathTrafficWaitSec: number;
+  emptyNodeTrafficWaitSec: number;
+  loadedPathTrafficWaitSec: number;
+  loadedNodeTrafficWaitSec: number;
   emptyTravelTimeSec: number;
   loadedTravelTimeSec: number;
 };
@@ -284,8 +302,14 @@ function asTransportCompletePayload(payload: DesEventPayload): TransportComplete
     emptyDistanceM: Number(payload.emptyDistanceM),
     loadedDistanceM: Number(payload.loadedDistanceM),
     trafficWaitSec: Number(payload.trafficWaitSec),
+    pathTrafficWaitSec: Number(payload.pathTrafficWaitSec),
+    nodeTrafficWaitSec: Number(payload.nodeTrafficWaitSec),
     emptyTrafficWaitSec: Number(payload.emptyTrafficWaitSec),
     loadedTrafficWaitSec: Number(payload.loadedTrafficWaitSec),
+    emptyPathTrafficWaitSec: Number(payload.emptyPathTrafficWaitSec),
+    emptyNodeTrafficWaitSec: Number(payload.emptyNodeTrafficWaitSec),
+    loadedPathTrafficWaitSec: Number(payload.loadedPathTrafficWaitSec),
+    loadedNodeTrafficWaitSec: Number(payload.loadedNodeTrafficWaitSec),
     emptyTravelTimeSec: Number(payload.emptyTravelTimeSec),
     loadedTravelTimeSec: Number(payload.loadedTravelTimeSec)
   };
@@ -496,8 +520,14 @@ export class ProcessFlowRuntime {
       totalEmptyDistanceM: 0,
       totalLoadedDistanceM: 0,
       totalTrafficWaitTimeSec: 0,
+      totalPathTrafficWaitTimeSec: 0,
+      totalNodeTrafficWaitTimeSec: 0,
       totalEmptyTrafficWaitTimeSec: 0,
       totalLoadedTrafficWaitTimeSec: 0,
+      totalEmptyPathTrafficWaitTimeSec: 0,
+      totalEmptyNodeTrafficWaitTimeSec: 0,
+      totalLoadedPathTrafficWaitTimeSec: 0,
+      totalLoadedNodeTrafficWaitTimeSec: 0,
       totalEmptyTravelTimeSec: 0,
       totalLoadedTravelTimeSec: 0
     };
@@ -706,8 +736,14 @@ export class ProcessFlowRuntime {
     stats.totalEmptyDistanceM += payload.emptyDistanceM;
     stats.totalLoadedDistanceM += payload.loadedDistanceM;
     stats.totalTrafficWaitTimeSec += payload.trafficWaitSec;
+    stats.totalPathTrafficWaitTimeSec += payload.pathTrafficWaitSec;
+    stats.totalNodeTrafficWaitTimeSec += payload.nodeTrafficWaitSec;
     stats.totalEmptyTrafficWaitTimeSec += payload.emptyTrafficWaitSec;
     stats.totalLoadedTrafficWaitTimeSec += payload.loadedTrafficWaitSec;
+    stats.totalEmptyPathTrafficWaitTimeSec += payload.emptyPathTrafficWaitSec;
+    stats.totalEmptyNodeTrafficWaitTimeSec += payload.emptyNodeTrafficWaitSec;
+    stats.totalLoadedPathTrafficWaitTimeSec += payload.loadedPathTrafficWaitSec;
+    stats.totalLoadedNodeTrafficWaitTimeSec += payload.loadedNodeTrafficWaitSec;
     stats.totalEmptyTravelTimeSec += payload.emptyTravelTimeSec;
     stats.totalLoadedTravelTimeSec += payload.loadedTravelTimeSec;
     materialHandling.releaseTransporter(payload.transporterUnitId, payload.toNodeId);
@@ -923,6 +959,9 @@ export class ProcessFlowRuntime {
     const slot = this.requireMaterialHandling(blockId).retrieve(storageId, query, policy);
     entity.attributes.storageId = null;
     entity.attributes.retrievedItemId = slot.itemId ?? query;
+    if (slot.sku) {
+      entity.attributes.retrievedSku = slot.sku;
+    }
     this.incrementCompleted(blockId);
     this.routeFromBlock(sim, blockId, entity);
     this.tryDrainStorageStoreWaits(sim, storageId);
@@ -1109,6 +1148,8 @@ export class ProcessFlowRuntime {
     const routeDistanceM = emptyRoute.distanceM + loadedRoute.distanceM;
     const routeTravelTimeSec = emptyRoute.travelTimeSec + loadedRoute.travelTimeSec;
     const routeTrafficWaitSec = plan.trafficWaitSec;
+    const routePathTrafficWaitSec = emptyRoute.pathTrafficWaitSec + loadedRoute.pathTrafficWaitSec;
+    const routeNodeTrafficWaitSec = emptyRoute.nodeTrafficWaitSec + loadedRoute.nodeTrafficWaitSec;
     const busyDurationSec = plan.completionSec - sim.nowSec;
     this.activeTransports.set(unit.id, {
       transporterUnitId: unit.id,
@@ -1133,22 +1174,34 @@ export class ProcessFlowRuntime {
       loadedTravelStartSec: loadedRoute.travelStartSec,
       loadedTravelEndSec: loadedRoute.travelEndSec,
       loadedTrafficWaitSec: loadedRoute.trafficWaitSec,
+      emptyPathTrafficWaitSec: emptyRoute.pathTrafficWaitSec,
+      emptyNodeTrafficWaitSec: emptyRoute.nodeTrafficWaitSec,
+      loadedPathTrafficWaitSec: loadedRoute.pathTrafficWaitSec,
+      loadedNodeTrafficWaitSec: loadedRoute.nodeTrafficWaitSec,
       unloadStartSec: loadedRoute.travelEndSec,
       unloadEndSec: plan.unloadEndSec,
-      trafficWaitSec: routeTrafficWaitSec
+      trafficWaitSec: routeTrafficWaitSec,
+      pathTrafficWaitSec: routePathTrafficWaitSec,
+      nodeTrafficWaitSec: routeNodeTrafficWaitSec
     });
     const entity = this.requireEntity(request.entityId);
     entity.attributes.lastEmptyRouteDistanceM = emptyRoute.distanceM;
     entity.attributes.lastEmptyRouteTravelTimeSec = emptyRoute.travelTimeSec;
     entity.attributes.lastEmptyRouteTrafficWaitSec = emptyRoute.trafficWaitSec;
+    entity.attributes.lastEmptyRoutePathTrafficWaitSec = emptyRoute.pathTrafficWaitSec;
+    entity.attributes.lastEmptyRouteNodeTrafficWaitSec = emptyRoute.nodeTrafficWaitSec;
     entity.attributes.lastEmptyRoutePath = emptyRoute.pathIds.join('>');
     entity.attributes.lastLoadedRouteDistanceM = loadedRoute.distanceM;
     entity.attributes.lastLoadedRouteTravelTimeSec = loadedRoute.travelTimeSec;
     entity.attributes.lastLoadedRouteTrafficWaitSec = loadedRoute.trafficWaitSec;
+    entity.attributes.lastLoadedRoutePathTrafficWaitSec = loadedRoute.pathTrafficWaitSec;
+    entity.attributes.lastLoadedRouteNodeTrafficWaitSec = loadedRoute.nodeTrafficWaitSec;
     entity.attributes.lastLoadedRoutePath = loadedRoute.pathIds.join('>');
     entity.attributes.lastRouteDistanceM = routeDistanceM;
     entity.attributes.lastRouteTravelTimeSec = routeTravelTimeSec;
     entity.attributes.lastRouteTrafficWaitSec = routeTrafficWaitSec;
+    entity.attributes.lastRoutePathTrafficWaitSec = routePathTrafficWaitSec;
+    entity.attributes.lastRouteNodeTrafficWaitSec = routeNodeTrafficWaitSec;
     entity.attributes.lastRoutePath = [...emptyRoute.pathIds, ...loadedRoute.pathIds].join('>');
 
     sim.scheduleIn(
@@ -1164,8 +1217,14 @@ export class ProcessFlowRuntime {
         emptyDistanceM: emptyRoute.distanceM,
         loadedDistanceM: loadedRoute.distanceM,
         trafficWaitSec: routeTrafficWaitSec,
+        pathTrafficWaitSec: routePathTrafficWaitSec,
+        nodeTrafficWaitSec: routeNodeTrafficWaitSec,
         emptyTrafficWaitSec: emptyRoute.trafficWaitSec,
         loadedTrafficWaitSec: loadedRoute.trafficWaitSec,
+        emptyPathTrafficWaitSec: emptyRoute.pathTrafficWaitSec,
+        emptyNodeTrafficWaitSec: emptyRoute.nodeTrafficWaitSec,
+        loadedPathTrafficWaitSec: loadedRoute.pathTrafficWaitSec,
+        loadedNodeTrafficWaitSec: loadedRoute.nodeTrafficWaitSec,
         emptyTravelTimeSec: emptyRoute.travelTimeSec,
         loadedTravelTimeSec: loadedRoute.travelTimeSec
       },

@@ -256,7 +256,7 @@ export const AiNativeDesLibraryCatalog: AiNativeDesLibraryCatalogDefinition = {
       purpose: 'Define nodes, paths, fleets, storage, conveyors, zones, and obstacles in meter units.',
       aiUsage: 'Use to convert a facility layout into simulation-ready material movement data.',
       parameters: [
-        { id: 'nodes', type: 'MaterialNode[]', required: true, description: 'Named coordinates for docks, stations, storage, homes, parking, chargers, and conveyor ports.' },
+        { id: 'nodes', type: 'MaterialNode[]', required: true, description: 'Named coordinates for docks, stations, storage, homes, parking, chargers, conveyor ports, and intersections. Nodes may define capacity, reservationDurationSec, and waitAllowed.' },
         { id: 'paths', type: 'MaterialPath[]', required: false, description: 'Directed or bidirectional travel links with optional speed limits, trafficControl, and capacity.' },
         { id: 'transporterFleets', type: 'TransporterFleet[]', required: false, description: 'AMR, AGV, forklift, worker, crane fleets with optional acceleration and deceleration.' },
         { id: 'storageSystems', type: 'StorageSystem[]', required: false, description: 'Capacity-constrained storage at nodes.' },
@@ -264,7 +264,7 @@ export const AiNativeDesLibraryCatalog: AiNativeDesLibraryCatalogDefinition = {
         { id: 'zones', type: 'MaterialZone[]', required: false, description: 'Free-space, restricted, storage, or traffic-control polygons.' },
         { id: 'obstacles', type: 'MaterialObstacle[]', required: false, description: 'Fixed rectangular obstacles for layout analysis and future motion planning.' }
       ],
-      constraints: ['All references must point to defined node ids.', 'Fleet parkingNodeId and chargerNodeId must reference nodes when provided.', 'Storage slotIds length must match capacity when slotIds are provided.', 'Path trafficControl defaults to reservation and path capacity defaults to 1.', 'Node capacity defaults to 1 and node reservation duration defaults to 0.5s in runtime.', 'If accelerationMps2 and decelerationMps2 are present, route timing uses triangular/trapezoidal velocity profiles.'],
+      constraints: ['All references must point to defined node ids.', 'Fleet parkingNodeId and chargerNodeId must reference nodes when provided.', 'Storage slotIds length must match capacity when slotIds are provided.', 'Path trafficControl defaults to reservation and path capacity defaults to 1.', 'Node capacity defaults to 1 and node reservation duration defaults to 0.5s in runtime.', 'Intersection nodes default to waitAllowed=false so route reservation delays entry instead of parking AMRs in the intersection.', 'If accelerationMps2 and decelerationMps2 are present, route timing uses triangular/trapezoidal velocity profiles.'],
       example: { id: 'layout', nodes: [{ id: 'dock', type: 'dock', x: 0, z: 0 }, { id: 'parking', type: 'parking', x: -4, z: 0 }], paths: [{ id: 'dock-rack', from: 'dock', to: 'rack', trafficControl: 'reservation', capacity: 1 }], transporterFleets: [{ id: 'amr', count: 2, homeNodeId: 'dock', parkingNodeId: 'parking', speedMps: 1.5, accelerationMps2: 0.8, decelerationMps2: 0.8 }] }
     },
     {

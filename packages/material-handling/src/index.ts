@@ -168,6 +168,16 @@ type RectEnvelope = {
   maxZ: number;
 };
 
+type ReservationWindow = {
+  startSec: number;
+  endSec: number;
+};
+
+type ReservationMaps = {
+  paths: Map<string, ReservationWindow[]>;
+  nodes: Map<string, ReservationWindow[]>;
+};
+
 function orientation(a: Point2, b: Point2, c: Point2): number {
   return (b.z - a.z) * (c.x - b.x) - (b.x - a.x) * (c.z - b.z);
 }
@@ -429,54 +439,26 @@ export class MaterialHandlingRuntime {
       };
     }
 
-    const segments: MaterialRouteSegmentReservation[] = [];
-    let currentSec = requestedStartSec;
-    let pathTrafficWaitSec = 0;
-    let nodeTrafficWaitSec = 0;
-
-    for (let index = 0; index < route.pathIds.length; index += 1) {
-      const fromNodeId = route.nodeIds[index]!;
-      const toNodeId = route.nodeIds[index + 1]!;
-      const edge = this.requireEdge(fromNodeId, toNodeId, route.pathIds[index]!);
-      const travelProfile = this.calculateEdgeTravel(edge, fleetId);
-      const travelTimeSec = travelProfile.travelTimeSec;
-      const reserved = this.reservePathAndNode(edge.path, toNodeId, currentSec, travelTimeSec);
-      const startSec = reserved.pathStartSec;
-      const endSec = startSec + travelTimeSec;
-      const segmentNodeWaitSec = reserved.nodeWaitSec;
-      const segmentPathWaitSec = Math.max(0, startSec - currentSec - segmentNodeWaitSec);
-      pathTrafficWaitSec += segmentPathWaitSec;
-      nodeTrafficWaitSec += segmentNodeWaitSec;
-      segments.push({
-        pathId: edge.path.id,
-        fromNodeId,
-        toNodeId,
-        distanceM: edge.distanceM,
-        maxSpeedMps: travelProfile.maxSpeedMps,
-        travelTimeSec,
-        travelProfile,
-        requestedStartSec: currentSec,
-        startSec,
-        endSec,
-        trafficWaitSec: segmentPathWaitSec + segmentNodeWaitSec,
-        nodeReservationStartSec: reserved.nodeStartSec,
-        nodeReservationEndSec: reserved.nodeEndSec,
-        nodeWaitSec: segmentNodeWaitSec
-      });
-      currentSec = endSec;
+    const planned = this.planRouteReservations(route, fleetId, requestedStartSec);
+    for (const segment of planned.segments) {
+      if (segment.travelTimeSec > 0) {
+        this.commitReservation(this.pathReservations, segment.pathId, segment.startSec, segment.endSec);
+      }
+      if (segment.nodeReservationEndSec > segment.nodeReservationStartSec) {
+        this.commitReservation(this.nodeReservations, segment.toNodeId, segment.nodeReservationStartSec, segment.nodeReservationEndSec);
+      }
     }
 
-    const trafficWaitSec = pathTrafficWaitSec + nodeTrafficWaitSec;
     return {
       ...route,
       requestedStartSec,
-      travelStartSec: segments[0]?.startSec ?? requestedStartSec,
-      travelEndSec: currentSec,
-      trafficWaitSec,
-      pathTrafficWaitSec,
-      nodeTrafficWaitSec,
-      reservedDurationSec: currentSec - requestedStartSec,
-      segments
+      travelStartSec: planned.segments[0]?.startSec ?? requestedStartSec,
+      travelEndSec: planned.travelEndSec,
+      trafficWaitSec: planned.pathTrafficWaitSec + planned.nodeTrafficWaitSec,
+      pathTrafficWaitSec: planned.pathTrafficWaitSec,
+      nodeTrafficWaitSec: planned.nodeTrafficWaitSec,
+      reservedDurationSec: planned.travelEndSec - requestedStartSec,
+      segments: planned.segments
     };
   }
 
@@ -592,10 +574,11 @@ export class MaterialHandlingRuntime {
       throw new Error(`Item ${query} is not stored in ${storageId}`);
     }
 
+    const removed = { ...slot };
     slot.itemId = null;
     slot.sku = null;
     slot.storedAtSec = null;
-    return { ...slot };
+    return removed;
   }
 
   canEnterConveyor(conveyorId: string): boolean {
@@ -660,11 +643,104 @@ export class MaterialHandlingRuntime {
     return calculateTravelProfile(edge.distanceM, maxSpeedMps, fleet?.accelerationMps2, fleet?.decelerationMps2);
   }
 
-  private reservePathAndNode(
+  private planRouteReservations(
+    route: MaterialRoutePlan,
+    fleetId: string | undefined,
+    requestedStartSec: number
+  ): {
+    segments: MaterialRouteSegmentReservation[];
+    pathTrafficWaitSec: number;
+    nodeTrafficWaitSec: number;
+    travelEndSec: number;
+  } {
+    let routeStartSec = requestedStartSec;
+
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const maps = this.cloneReservationMaps();
+      const planned = this.buildRouteReservationPlan(route, fleetId, routeStartSec, maps);
+      const blockedWait = planned.segments.find((segment, index) => {
+        if (index === 0) {
+          return false;
+        }
+        const fromNode = this.requireNode(segment.fromNodeId);
+        return !this.nodeAllowsWaiting(fromNode) && segment.startSec > segment.requestedStartSec + 1e-9;
+      });
+
+      if (!blockedWait) {
+        return {
+          ...planned,
+          pathTrafficWaitSec: planned.pathTrafficWaitSec + Math.max(0, routeStartSec - requestedStartSec)
+        };
+      }
+
+      routeStartSec += blockedWait.startSec - blockedWait.requestedStartSec;
+    }
+
+    throw new Error(`Unable to reserve route ${route.nodeIds.join(' -> ')} without waiting inside a non-waitable node`);
+  }
+
+  private buildRouteReservationPlan(
+    route: MaterialRoutePlan,
+    fleetId: string | undefined,
+    requestedStartSec: number,
+    maps: ReservationMaps
+  ): {
+    segments: MaterialRouteSegmentReservation[];
+    pathTrafficWaitSec: number;
+    nodeTrafficWaitSec: number;
+    travelEndSec: number;
+  } {
+    const segments: MaterialRouteSegmentReservation[] = [];
+    let currentSec = requestedStartSec;
+    let pathTrafficWaitSec = 0;
+    let nodeTrafficWaitSec = 0;
+
+    for (let index = 0; index < route.pathIds.length; index += 1) {
+      const fromNodeId = route.nodeIds[index]!;
+      const toNodeId = route.nodeIds[index + 1]!;
+      const edge = this.requireEdge(fromNodeId, toNodeId, route.pathIds[index]!);
+      const travelProfile = this.calculateEdgeTravel(edge, fleetId);
+      const travelTimeSec = travelProfile.travelTimeSec;
+      const reserved = this.planPathAndNode(edge.path, toNodeId, currentSec, travelTimeSec, maps);
+      const startSec = reserved.pathStartSec;
+      const endSec = startSec + travelTimeSec;
+      const segmentNodeWaitSec = reserved.nodeWaitSec;
+      const segmentPathWaitSec = Math.max(0, startSec - currentSec - segmentNodeWaitSec);
+      pathTrafficWaitSec += segmentPathWaitSec;
+      nodeTrafficWaitSec += segmentNodeWaitSec;
+      segments.push({
+        pathId: edge.path.id,
+        fromNodeId,
+        toNodeId,
+        distanceM: edge.distanceM,
+        maxSpeedMps: travelProfile.maxSpeedMps,
+        travelTimeSec,
+        travelProfile,
+        requestedStartSec: currentSec,
+        startSec,
+        endSec,
+        trafficWaitSec: segmentPathWaitSec + segmentNodeWaitSec,
+        nodeReservationStartSec: reserved.nodeStartSec,
+        nodeReservationEndSec: reserved.nodeEndSec,
+        nodeWaitSec: segmentNodeWaitSec
+      });
+      currentSec = endSec;
+    }
+
+    return {
+      segments,
+      pathTrafficWaitSec,
+      nodeTrafficWaitSec,
+      travelEndSec: currentSec
+    };
+  }
+
+  private planPathAndNode(
     path: MaterialPathDefinition,
     toNodeId: string,
     requestedStartSec: number,
-    travelTimeSec: number
+    travelTimeSec: number,
+    maps: ReservationMaps
   ): { pathStartSec: number; nodeStartSec: number; nodeEndSec: number; nodeWaitSec: number } {
     const node = this.requireNode(toNodeId);
     const nodeDurationSec = node.reservationDurationSec ?? 0.5;
@@ -672,22 +748,22 @@ export class MaterialHandlingRuntime {
     let nodeWaitSec = 0;
 
     while (true) {
-      const pathReservations = this.pathReservations.get(path.id) ?? [];
+      const pathReservations = maps.paths.get(path.id) ?? [];
       const pathStartSec = path.trafficControl === 'none' || travelTimeSec <= 0
         ? candidatePathStartSec
         : this.findEarliestReservationStart(pathReservations, path.capacity, candidatePathStartSec, travelTimeSec);
       const pathEndSec = pathStartSec + travelTimeSec;
-      const nodeReservations = this.nodeReservations.get(toNodeId) ?? [];
+      const nodeReservations = maps.nodes.get(toNodeId) ?? [];
       const nodeStartSec = nodeDurationSec <= 0
         ? pathEndSec
         : this.findEarliestReservationStart(nodeReservations, node.capacity ?? 1, pathEndSec, nodeDurationSec);
 
       if (nodeStartSec <= pathEndSec + 1e-9) {
         if (path.trafficControl !== 'none' && travelTimeSec > 0) {
-          this.commitReservation(this.pathReservations, path.id, pathStartSec, pathEndSec);
+          this.commitReservation(maps.paths, path.id, pathStartSec, pathEndSec);
         }
         if (nodeDurationSec > 0) {
-          this.commitReservation(this.nodeReservations, toNodeId, nodeStartSec, nodeStartSec + nodeDurationSec);
+          this.commitReservation(maps.nodes, toNodeId, nodeStartSec, nodeStartSec + nodeDurationSec);
         }
         return {
           pathStartSec,
@@ -700,6 +776,17 @@ export class MaterialHandlingRuntime {
       nodeWaitSec += Math.max(0, nodeStartSec - pathEndSec);
       candidatePathStartSec = Math.max(candidatePathStartSec, nodeStartSec - travelTimeSec);
     }
+  }
+
+  private cloneReservationMaps(): ReservationMaps {
+    return {
+      paths: new Map([...this.pathReservations.entries()].map(([id, reservations]) => [id, reservations.map((reservation) => ({ ...reservation }))])),
+      nodes: new Map([...this.nodeReservations.entries()].map(([id, reservations]) => [id, reservations.map((reservation) => ({ ...reservation }))]))
+    };
+  }
+
+  private nodeAllowsWaiting(node: MaterialNodeDefinition): boolean {
+    return node.waitAllowed ?? node.type !== 'intersection';
   }
 
   private commitReservation(
