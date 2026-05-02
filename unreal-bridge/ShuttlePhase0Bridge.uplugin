@@ -1,0 +1,22 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "Shuttle Phase 0 Bridge",
+  "Description": "Subscribes to SimCore authoritative shuttle state and drives placeholder Unreal visual actors.",
+  "Category": "Simulation",
+  "CreatedBy": "DES Platform",
+  "Modules": [
+    {
+      "Name": "ShuttlePhase0Bridge",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "WebSockets",
+      "Enabled": true
+    }
+  ]
+}

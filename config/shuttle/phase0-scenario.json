@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "shuttle.phase0.v0",
+  "id": "shuttle-phase0-balanced",
+  "name": "Phase 0 Balanced Shuttle Smoke",
+  "seed": 20260502,
+  "durationSec": 600,
+  "timeStepSec": 0.2,
+  "vehicles": {
+    "count": 2,
+    "lengthM": 1.09,
+    "widthM": 1.03,
+    "heightM": 0.16,
+    "emptySpeedMps": 2,
+    "loadedSpeedMps": 1.5,
+    "accelerationMps2": 1,
+    "switchDirectionSec": 3,
+    "liftTimeSec": 2,
+    "lowerTimeSec": 2,
+    "maxLoadKg": 1800,
+    "safetyRadiusM": 0.72,
+    "batteryEnabled": false,
+    "initialSoc": 1
+  },
+  "layout": {
+    "units": "meter",
+    "nodes": [
+      { "id": "inbound", "type": "inbound", "x": 0, "y": 0, "z": 0, "noStop": true, "noParking": true, "capacity": 1, "allowedDirections": [] },
+      { "id": "x-main", "type": "intersection", "x": 5, "y": 0, "z": 0, "noStop": true, "noParking": true, "capacity": 1, "allowedDirections": [] },
+      { "id": "storage-a", "type": "storage", "x": 10, "y": 0, "z": -3, "noStop": false, "noParking": true, "capacity": 1, "allowedDirections": [] },
+      { "id": "storage-b", "type": "storage", "x": 10, "y": 0, "z": 3, "noStop": false, "noParking": true, "capacity": 1, "allowedDirections": [] },
+      { "id": "outbound", "type": "outbound", "x": 16, "y": 0, "z": 0, "noStop": true, "noParking": true, "capacity": 1, "allowedDirections": [] },
+      { "id": "parking-a", "type": "parking", "x": 2, "y": 0, "z": -4, "noStop": false, "noParking": false, "capacity": 1, "allowedDirections": [] },
+      { "id": "parking-b", "type": "parking", "x": 2, "y": 0, "z": 4, "noStop": false, "noParking": false, "capacity": 1, "allowedDirections": [] },
+      { "id": "lift-blackbox", "type": "lift-blackbox", "x": 18, "y": 0, "z": 4, "noStop": true, "noParking": true, "capacity": 1, "allowedDirections": [] }
+    ],
+    "edges": [
+      { "id": "parking-a-inbound", "from": "parking-a", "to": "inbound", "lengthM": 4.47, "directionMode": "twoWay", "reservationType": "edge", "conflictGroup": "west-yard", "noParking": true },
+      { "id": "parking-b-inbound", "from": "parking-b", "to": "inbound", "lengthM": 4.47, "directionMode": "twoWay", "reservationType": "edge", "conflictGroup": "west-yard", "noParking": true },
+      { "id": "inbound-x-main", "from": "inbound", "to": "x-main", "lengthM": 5, "directionMode": "twoWay", "reservationType": "edge", "conflictGroup": "main-aisle", "noParking": true },
+      { "id": "x-main-storage-a", "from": "x-main", "to": "storage-a", "lengthM": 5.83, "directionMode": "twoWay", "reservationType": "edge", "conflictGroup": "storage-fan", "noParking": true },
+      { "id": "x-main-storage-b", "from": "x-main", "to": "storage-b", "lengthM": 5.83, "directionMode": "twoWay", "reservationType": "edge", "conflictGroup": "storage-fan", "noParking": true },
+      { "id": "x-main-outbound", "from": "x-main", "to": "outbound", "lengthM": 11, "directionMode": "twoWay", "reservationType": "edge", "conflictGroup": "main-aisle", "noParking": true },
+      { "id": "outbound-lift-blackbox", "from": "outbound", "to": "lift-blackbox", "lengthM": 4.47, "directionMode": "twoWay", "reservationType": "edge", "conflictGroup": "lift-approach", "noParking": true }
+    ],
+    "zones": [
+      {
+        "id": "zone-x-main",
+        "type": "intersection",
+        "nodeIds": ["x-main"],
+        "edgeIds": ["inbound-x-main", "x-main-storage-a", "x-main-storage-b", "x-main-outbound"],
+        "noStop": true,
+        "noParking": true,
+        "capacity": 1,
+        "conflictGroup": "intersection-x-main"
+      }
+    ]
+  },
+  "taskGeneration": {
+    "inboundRatePerHour": 90,
+    "outboundRatePerHour": 90,
+    "inboundOutboundMix": 0.5,
+    "arrivalDistribution": "deterministic",
+    "maxTasks": 40
+  },
+  "physicsParams": {
+    "emptySpeedMps": 2,
+    "loadedSpeedMps": 1.5,
+    "accelerationMps2": 1,
+    "switchDirectionSec": 3,
+    "liftTimeSec": 2,
+    "lowerTimeSec": 2,
+    "loadedClearanceM": 0.2,
+    "reservationClearanceSec": 0.4
+  },
+  "routingPolicy": {
+    "algorithm": "astar",
+    "allowReplan": true,
+    "routeTimeoutSec": 12,
+    "maxReplansPerTask": 3
+  },
+  "trafficPolicy": {
+    "edgeCapacity": 1,
+    "nodeCapacity": 1,
+    "zoneCapacity": 1,
+    "minimumClearanceSec": 0.4,
+    "priorityAgingSec": 20,
+    "deadlockDetectSec": 15,
+    "deadlockBreakPolicy": "oldest-waits-wins"
+  }
+}

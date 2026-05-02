@@ -12,6 +12,9 @@
     "test:watch": "vitest",
     "dev:api": "pnpm --filter sim-api dev",
     "dev:viewer": "pnpm --filter viewer dev",
+    "dev:shuttle-api": "pnpm --filter shuttle-api dev",
+    "dev:shuttle-dashboard": "pnpm --filter shuttle-dashboard dev",
+    "shuttle:prereq": "pnpm --filter shuttle-api prereq",
     "run:model": "pnpm --filter model-runner run run",
     "run:experiment": "pnpm --filter model-runner run experiment",
     "run:sweep": "pnpm --filter model-runner run sweep",
@@ -23,6 +26,7 @@
     "report:model": "pnpm --filter reporting report:model",
     "mvp:generic": "pnpm run:study config/studies/fulfillment-center-mvp.study.json",
     "mvp:inline": "pnpm run:study config/studies/micro-fulfillment-inline.study.json",
+    "test:shuttle": "vitest run packages/shuttle-sim-core/src/index.test.ts",
     "build": "pnpm run generate:schema && pnpm run generate:catalog && pnpm run typecheck && pnpm --filter viewer build"
   },
   "devDependencies": {

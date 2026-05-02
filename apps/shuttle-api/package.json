@@ -1,0 +1,24 @@
+{
+  "name": "shuttle-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server.ts",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prereq": "tsx src/prerequisites.ts"
+  },
+  "dependencies": {
+    "@des-platform/shuttle-schemas": "workspace:*",
+    "@des-platform/shuttle-sim-core": "workspace:*",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/ws": "^8.18.1"
+  }
+}

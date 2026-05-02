@@ -1,5 +1,6 @@
 node_modules
 apps/viewer/dist
+apps/shuttle-dashboard/dist
 coverage
 output
 test-results
